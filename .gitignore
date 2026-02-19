@@ -1,6 +1,7 @@
 # Dependencies
 /vendor/
-/vendor-prefixed/
+/vendor-prefixed/*
+!/vendor-prefixed/.gitkeep
 /node_modules/
 
 # Composer

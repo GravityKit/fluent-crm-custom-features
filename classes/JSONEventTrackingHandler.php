@@ -33,22 +33,22 @@ class JSONEventTrackingHandler {
 	 */
 	public function register() {
 		// Handle AJAX Property Name Lookups.
-		add_filter( 'fluentcrm_ajax_options_event_tracking_json_props', [ $this, 'getEventTrackingPropsOptions' ], 10, 1 );
+		add_filter( 'fluentcrm_ajax_options_event_tracking_json_props', [ $this, 'get_event_tracking_props_options' ], 10, 1 );
 
 		// Apply conditional event rules.
-		add_filter( 'fluentcrm_contacts_filter_event_tracking', [ $this, 'applyEventTrackingFilter' ], 10, 2 );
+		add_filter( 'fluentcrm_contacts_filter_event_tracking', [ $this, 'apply_event_tracking_filter' ], 10, 2 );
 
 		// Show JSON event widget.
-		add_filter( 'fluent_crm/subscriber_info_widgets', [ $this, 'addSubscriberInfoWidgets' ], 11, 2 );
-		add_filter( 'fluent_crm/subscriber_info_widget_event_tracking', [ $this, 'addSubscriberInfoWidgets' ], 11, 2 );
+		add_filter( 'fluent_crm/subscriber_info_widgets', [ $this, 'add_subscriber_info_widgets' ], 11, 2 );
+		add_filter( 'fluent_crm/subscriber_info_widget_event_tracking', [ $this, 'add_subscriber_info_widgets' ], 11, 2 );
 
 		// Add custom rule types.
-		add_filter( 'fluentcrm_advanced_filter_options', [ $this, 'addEventTrackingFilterOptions' ], 11, 1 );
-		add_filter( 'fluent_crm/event_tracking_condition_groups', [ $this, 'addEventTrackingConditionOptions' ], 11, 1 );
+		add_filter( 'fluentcrm_advanced_filter_options', [ $this, 'add_event_tracking_filter_options' ], 11, 1 );
+		add_filter( 'fluent_crm/event_tracking_condition_groups', [ $this, 'add_event_tracking_condition_options' ], 11, 1 );
 
-		// Remove.
-		add_filter( 'fluentcrm_automation_conditions_assess_event_tracking_objects', [ $this, 'assessEventObjectTrackingConditions' ], 10, 3 );
-		add_filter( 'fluentcrm_contacts_filter_event_tracking_objects', [ $this, 'applyEventTrackingFilter' ], 10, 2 );
+		// Assess event object tracking conditions.
+		add_filter( 'fluentcrm_automation_conditions_assess_event_tracking_objects', [ $this, 'assess_event_object_tracking_conditions' ], 10, 3 );
+		add_filter( 'fluentcrm_contacts_filter_event_tracking_objects', [ $this, 'apply_event_tracking_filter' ], 10, 2 );
 	}
 
 	/**
@@ -185,8 +185,9 @@ class JSONEventTrackingHandler {
 					continue;
 				}
 
-				switch ( $prop_type ) {
-					case 'int':
+				// Sanitize prop_name to prevent SQL injection — only allow alphanumeric and underscores.
+				if ( ! preg_match( '/^[a-zA-Z0-9_]+$/', $prop_name ) ) {
+					continue;
 				}
 
 				$operator = $filter['operator'];
@@ -270,7 +271,7 @@ class JSONEventTrackingHandler {
 
 							$q
 								->where( 'event_key', $event_key_var )
-								->whereRaw( "JSON_EXTRACT(`value`, '$.{$prop_name}') LIKE '%{$escaped_value}%'" );
+								->whereRaw( "JSON_EXTRACT(`value`, '$.{$prop_name}') LIKE ?", [ '%' . $escaped_value . '%' ] );
 						}
 					);
 				} elseif ( 'not_contains' === $operator ) {
@@ -285,10 +286,9 @@ class JSONEventTrackingHandler {
 
 								$q
 									->where( 'event_key', $event_key_var )
-									->whereRaw( "JSON_EXTRACT(`value`, '$.{$prop_name}') LIKE '%{$escaped_value}%'" );
+									->whereRaw( "JSON_EXTRACT(`value`, '$.{$prop_name}') LIKE ?", [ '%' . $escaped_value . '%' ] );
 							}
 						);
-						break;
 				}
 			}
 		}

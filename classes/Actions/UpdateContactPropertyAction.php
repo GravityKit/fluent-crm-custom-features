@@ -309,13 +309,10 @@ class UpdateContactPropertyAction extends BaseAction {
 			$is_array_type = Arr::get( $fields, $value_key . '.type' ) === 'checkbox' || Arr::get( $fields, $value_key . '.type' ) === 'select-multi';
 
 			if ( ! is_array( $value ) && $is_array_type ) {
-				$item_values   = explode( ',', $value );
-				$trimmedvalues = [];
-				foreach ( $item_values as $item_value ) {
-					$trimmedvalues[] = trim( $item_value );
-				}
-				if ( $item_value ) {
-					$values[ $value_key ] = $trimmedvalues;
+				$item_values    = explode( ',', $value );
+				$trimmed_values = array_map( 'trim', $item_values );
+				if ( $trimmed_values ) {
+					$values[ $value_key ] = $trimmed_values;
 				}
 			}
 		}

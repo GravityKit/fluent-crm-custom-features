@@ -83,20 +83,6 @@ class RandomWaitTimeAction extends \FluentCrm\App\Services\Funnel\Actions\WaitTi
 	}
 
 	/**
-	 * Get the action settings.
-	 *
-	 * @param array<string,string|array> $sequence The sequence settings.
-	 * @param array<string,string|array> $funnel The funnel settings.
-	 *
-	 * @return array<string,string|array>
-	 */
-	public function gettingAction( $sequence, $funnel ) {
-		$sequence = parent::gettingAction( $sequence, $funnel );
-
-		return $sequence;
-	}
-
-	/**
 	 * Get the block fields for the action.
 	 *
 	 * @return array<string,string|array>
@@ -197,20 +183,6 @@ class RandomWaitTimeAction extends \FluentCrm\App\Services\Funnel\Actions\WaitTi
 			$wait_times = $wait_times * 60 * 60 * 24 * 7;
 		} elseif ( 'months' === $unit ) {
 			$wait_times = $wait_times * 60 * 60 * 24 * ( 365 / 12 );
-		}
-
-		if ( $wait_times !== $delay_in_seconds ) {
-			// Track the random time as an event for debugging.
-			\FluentCrmApi( 'event_tracker' )->track( [
-				'event_key' => 'random_wait_time', // Required
-				'title'     => 'Randomized Wait Time', // Required
-				'value'     => wp_json_encode([
-					'next_sequence' => gmdate( 'Y-m-d H:i:s', time() + $wait_times ),
-					'delay'         => $wait_times,
-				]),
-				'email'     => 'daniel@code-atlantic.com',
-				'provider'  => 'debug', // If left empty, 'custom' will be added.
-			], false );
 		}
 
 		return $wait_times;

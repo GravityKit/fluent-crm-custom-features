@@ -91,10 +91,13 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 	 * @return string The target URL with query parameters preserved.
 	 */
 	public function getTargetUrl( $smart_link, $contact ) {
-		$ignored_params = [ 'fluentcrm', 'route', 'slug' ]; // Define the parameters to ignore.
+		$ignored_params = [ 'fluentcrm', 'route', 'slug' ];
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading query params for smart link redirect, nonce not applicable.
-		$query_params = array_diff_key( $_GET, array_flip( $ignored_params ) ); // Filter out ignored parameters.
-		$query_string = http_build_query( $query_params ); // Build the query string from remaining parameters.
+		$query_params = array_diff_key( $_GET, array_flip( $ignored_params ) );
+
+		// Sanitize all forwarded query parameters.
+		$query_params = array_map( 'sanitize_text_field', $query_params );
+		$query_string = http_build_query( $query_params );
 
 		$target_url = $smart_link->target_url;
 
@@ -104,13 +107,13 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 			$target_url = esc_url_raw( $target_url );
 		}
 
-		if ( false === strpos( $target_url, '?' ) ) {
-			$target_url .= '?';
-		} else {
-			$target_url .= '&';
+		// Only append separator and query string if there are params to forward.
+		if ( $query_string ) {
+			$separator  = ( false === strpos( $target_url, '?' ) ) ? '?' : '&';
+			$target_url = $target_url . $separator . $query_string;
 		}
 
-		return $target_url . $query_string;
+		return $target_url;
 	}
 
 	/**
