@@ -17,9 +17,7 @@
 	},
 	"files": [
 		"classes/**/*",
-		"vendor-prefixed/**/*",
-		"*.php",
-		".phpcs.xml.dist"
+		"*.php"
 	],
 	"scripts": {
 		"release": "node bin/build-release.js"

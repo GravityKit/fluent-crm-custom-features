@@ -18,8 +18,18 @@
  * @copyright  Copyright (c) 2024, Code Atlantic LLC.
  */
 
-// Register autoloader.
-require_once __DIR__ . '/vendor/autoload.php';
+// PSR-4 autoloader for CustomCRM namespace.
+spl_autoload_register( function ( $class ) {
+	$prefix = 'CustomCRM\\';
+	if ( strncmp( $prefix, $class, strlen( $prefix ) ) !== 0 ) {
+		return;
+	}
+	$relative_class = substr( $class, strlen( $prefix ) );
+	$file           = __DIR__ . '/classes/' . str_replace( '\\', '/', $relative_class ) . '.php';
+	if ( file_exists( $file ) ) {
+		require $file;
+	}
+} );
 
 add_action(
 	'init',
