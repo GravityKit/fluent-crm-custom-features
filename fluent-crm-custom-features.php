@@ -9,7 +9,7 @@
  * License: GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * GitHub Plugin URI: https://github.com/GravityKit/fluent-crm-custom-features
- * Primary Branch: feature/github-updater-headers
+ * Primary Branch: main
  * Requires PHP: 7.4
  * Requires at least: 6.2
  *
@@ -32,7 +32,7 @@ spl_autoload_register( function ( $class ) {
 } );
 
 /**
- * Whether FluentCampaign Pro's classes are available.
+ * Whether FluentCampaign Pro's Commerce service is available.
  *
  * Some features here extend or call Pro classes. Without this guard, deactivating Pro — during
  * an upgrade, a failed activation, or a lapsed licence — turns a missing feature into a fatal on
@@ -42,9 +42,18 @@ spl_autoload_register( function ( $class ) {
  * Checked by class rather than by `did_action( 'fluentcampaign_loaded' )`, because this runs on
  * `init` and only the class actually being extended matters.
  */
-function customcrm_pro_is_available() {
-	return class_exists( '\\FluentCampaign\\App\\Hooks\\Handlers\\SmartLinkHandler' )
-		&& class_exists( '\\FluentCampaign\\App\\Services\\Commerce\\Commerce' );
+function customcrm_commerce_is_available() {
+	return class_exists( '\\FluentCampaign\\App\\Services\\Commerce\\Commerce' );
+}
+
+/**
+ * Whether FluentCampaign Pro's smart-link handler is available.
+ *
+ * Checked separately from Commerce above: the two Pro integrations extend different classes, so
+ * ANDing them would disable a working one whenever the other is missing.
+ */
+function customcrm_smart_link_is_available() {
+	return class_exists( '\\FluentCampaign\\App\\Hooks\\Handlers\\SmartLinkHandler' );
 }
 
 /**
@@ -75,7 +84,7 @@ add_action(
 		( new \CustomCRM\JSONEventTrackingHandler() )->register();
 
 		// Needs FluentCampaign Pro's Commerce service.
-		if ( customcrm_pro_is_available() ) {
+		if ( customcrm_commerce_is_available() ) {
 			$edd_rules = new \CustomCRM\EDDSubscriptionRules();
 			$edd_rules->register();
 		}
@@ -99,7 +108,7 @@ add_action(
 		// Extends a Pro class, so it cannot even be loaded without Pro. Leaving Pro's own handler
 		// in place is the right fallback: the redirect still works, it just loses the query
 		// parameters this override exists to preserve.
-		if ( customcrm_pro_is_available() ) {
+		if ( customcrm_smart_link_is_available() ) {
 			// Remove the default smart link handler.
 			remove_all_actions( 'fluentcrm_smartlink_clicked' );
 			remove_all_actions( 'fluentcrm_smartlink_clicked_direct' );
