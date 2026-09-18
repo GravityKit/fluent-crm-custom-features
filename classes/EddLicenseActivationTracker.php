@@ -46,7 +46,13 @@ class EddLicenseActivationTracker {
 				return;
 			}
 
-			FluentCrmApi( 'event_tracker' )->track( [
+			$tracker = self::eventTracker();
+
+			if ( ! $tracker ) {
+				return;
+			}
+
+			$tracker->track( [
 				'email'     => $customer->email,
 				'provider'  => 'edd',
 				'event_key' => self::EVENT_ACTIVATED,
@@ -83,7 +89,13 @@ class EddLicenseActivationTracker {
 				return;
 			}
 
-			FluentCrmApi( 'event_tracker' )->track( [
+			$tracker = self::eventTracker();
+
+			if ( ! $tracker ) {
+				return;
+			}
+
+			$tracker->track( [
 				'email'     => $customer->email,
 				'provider'  => 'edd',
 				'event_key' => self::EVENT_DENIED,
@@ -168,5 +180,31 @@ class EddLicenseActivationTracker {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 			error_log( sprintf( 'EddLicenseActivationTracker %s failed: %s', $stage, $e->getMessage() ) );
 		}
+	}
+
+	/**
+	 * Resolve FluentCRM's event-tracking API across versions.
+	 *
+	 * The key was renamed `tracker` to `event_tracker` in FluentCRM 3.x
+	 * (`fluent-crm/app/Api/config.php`). Asking for a key that does not exist THROWS rather than
+	 * returning null, so the old name became an uncaught exception on every license activation
+	 * the moment core was upgraded.
+	 *
+	 * @return object|null The API wrapper, or null when event tracking is unavailable.
+	 */
+	private static function eventTracker() {
+		if ( ! function_exists( 'FluentCrmApi' ) ) {
+			return null;
+		}
+
+		foreach ( [ 'event_tracker', 'tracker' ] as $key ) {
+			try {
+				return FluentCrmApi( $key );
+			} catch ( \Exception $e ) {
+				continue;
+			}
+		}
+
+		return null;
 	}
 }
