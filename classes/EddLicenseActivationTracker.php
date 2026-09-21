@@ -35,7 +35,13 @@ class EddLicenseActivationTracker {
 	public function register(): void {
 		add_action( 'gk/store/license-activated', [ $this, 'trackActivation' ], 10, 1 );
 		add_action( 'gk/store/license-activation-denied', [ $this, 'trackDenied' ], 10, 1 );
-		add_action( 'init', [ $this, 'registerUsageFields' ], 20 );
+		// NOT an init hook: register() is itself called from an init callback at priority 99, so a
+		// priority-20 init hook is added after priority 20 has already passed and never fires.
+		// Gated to admin and CLI because the Store API now loads this plugin on every license
+		// check, and that path should not pay for an option read it can never need.
+		if ( is_admin() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+			$this->registerUsageFields();
+		}
 	}
 
 	/**
