@@ -126,6 +126,10 @@ add_action(
 		// because a firing means the theme-level editor-color-palette fix stopped working.
 		( new \CustomCRM\Integrations\EmailPaletteFallback() )->register();
 
+		// FluentCRM 3.2.0 stopped auto-padding core/group blocks, which our campaigns rely on for
+		// the header band's inner spacing. Restores it until the padding is authored into blocks.
+		( new \CustomCRM\Integrations\EmailGroupSpacing() )->register();
+
 		// Contact and company enrichment via external providers (PDL, etc.).
 		( new \CustomCRM\Actions\EnrichContactAction() );
 	},
