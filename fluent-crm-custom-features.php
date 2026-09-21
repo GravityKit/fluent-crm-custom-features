@@ -122,6 +122,10 @@ add_action(
 		// Custom CSS editor for FluentCRM email templates.
 		( new \CustomCRM\Integrations\CustomEmailCSS() )->register();
 
+		// Resolves any palette colour token FluentCRM left unreplaced. Logs loudly when it fires,
+		// because a firing means the theme-level editor-color-palette fix stopped working.
+		( new \CustomCRM\Integrations\EmailPaletteFallback() )->register();
+
 		// Contact and company enrichment via external providers (PDL, etc.).
 		( new \CustomCRM\Actions\EnrichContactAction() );
 	},
