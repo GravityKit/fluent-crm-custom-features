@@ -3,7 +3,6 @@
 namespace CustomCRM\Conditions;
 
 use FluentCrm\App\Models\FunnelSubscriber;
-use FluentCrm\App\Services\Helper;
 use FluentCrm\Framework\Support\Arr;
 
 /**
@@ -39,14 +38,15 @@ class AutomationConditions {
 	 * @return array<string,mixed>
 	 */
 	public function addConditionGroups( array $groups, $funnel ): array {
-		// Add Event Tracking group (evaluation handled by FunnelConditionHelper::assessEventTrackingConditions).
-		if ( Helper::isExperimentalEnabled( 'event_tracking' ) ) {
-			$groups['event_tracking'] = [
-				'label'    => __( 'Event Tracking', 'fluent-crm-custom-features' ),
-				'value'    => 'event_tracking',
-				'children' => $this->getEventTrackingChildren(),
-			];
-		}
+		// No Event Tracking group here on purpose. This class used to add one, registered after
+		// core's EventTrackingHandler at the same priority, so it replaced core's. Its children
+		// used the raw event key as the condition property, which no assessor understands:
+		// FunnelConditionHelper::assessEventTrackingConditions() runs the
+		// fluentcrm_contacts_filter_event_tracking filter, whose handlers recognise only
+		// event_tracking_key / _title / _value / _key_count / _json_prop. An unrecognised property
+		// left the query unfiltered, so the contact always came back and the condition evaluated
+		// TRUE — for "has performed" and "has not performed" alike. Core's group is evaluated and
+		// richer, so it is left to win.
 
 		// Add Automation Completion group.
 		$groups['automations'] = [
@@ -67,36 +67,6 @@ class AutomationConditions {
 		return $groups;
 	}
 
-	/**
-	 * Get event tracking condition options.
-	 *
-	 * Provides a list of tracked event keys that can be used as conditions.
-	 *
-	 * @return array<int,array<string,mixed>>
-	 */
-	private function getEventTrackingChildren(): array {
-		$events = fluentCrmDb()->table( 'fc_event_tracking' )
-			->select( 'event_key', 'title' )
-			->groupBy( 'event_key' )
-			->get();
-
-		$children = [];
-		foreach ( $events as $event ) {
-			$children[] = [
-				'label'             => $event->title ?: $event->event_key,
-				'value'             => $event->event_key,
-				'type'              => 'selections',
-				'options'           => [
-					'yes' => __( 'Yes - Has performed', 'fluent-crm-custom-features' ),
-					'no'  => __( 'No - Has not performed', 'fluent-crm-custom-features' ),
-				],
-				'is_multiple'       => false,
-				'is_singular_value' => true,
-			];
-		}
-
-		return $children;
-	}
 
 	/**
 	 * Get automation completion condition options.
