@@ -73,8 +73,11 @@ class EmailGroupSpacing {
 			return $html;
 		}
 
+		// Both quote styles: BlockParser emits single-quoted attributes and only Emogrifier
+		// normalises them to double. This filter runs after Emogrifier today, but matching one
+		// style only would silently skip every group if that ordering ever changed.
 		return (string) preg_replace_callback(
-			'/<div\b[^>]*\bclass="[^"]*\bfc_group\b[^"]*"[^>]*>/i',
+			'/<div\b[^>]*\bclass=(["\'])[^"\']*\bfc_group\b[^"\']*\1[^>]*>/i',
 			[ $this, 'pad_one_group' ],
 			$html
 		);
@@ -90,18 +93,21 @@ class EmailGroupSpacing {
 		$tag = $matches[0];
 
 		// Respect anything the block authored for itself, including a deliberate `padding: 0`.
-		if ( preg_match( '/style="[^"]*\bpadding(?:-top|-right|-bottom|-left)?\s*:/i', $tag ) ) {
+		if ( preg_match( '/style=(["\'])[^"\']*\bpadding(?:-top|-right|-bottom|-left)?\s*:/i', $tag ) ) {
 			return $tag;
 		}
 
 		$padding = 'padding: ' . self::DEFAULT_PADDING . ';';
 
-		// Append inside the existing style attribute, or add one when the tag carries none.
-		if ( preg_match( '/\bstyle="([^"]*)"/i', $tag, $style ) ) {
-			$existing = rtrim( trim( $style[1] ), ';' );
+		// Append inside the existing style attribute, reusing whichever delimiter it already uses,
+		// or add one when the tag carries none. Reusing the delimiter is what stops a single-quoted
+		// style attribute from gaining a second, double-quoted one.
+		if ( preg_match( '/\bstyle=(["\'])(.*?)\1/i', $tag, $style ) ) {
+			$quote    = $style[1];
+			$existing = rtrim( trim( $style[2] ), ';' );
 			$updated  = '' === $existing ? $padding : $existing . '; ' . $padding;
 
-			return str_replace( $style[0], 'style="' . $updated . '"', $tag );
+			return str_replace( $style[0], 'style=' . $quote . $updated . $quote, $tag );
 		}
 
 		return (string) preg_replace( '/<div\b/i', '<div style="' . $padding . '"', $tag, 1 );
