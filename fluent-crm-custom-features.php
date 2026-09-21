@@ -9,7 +9,7 @@
  * License: GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * GitHub Plugin URI: https://github.com/GravityKit/fluent-crm-custom-features
- * Primary Branch: feature/github-updater-headers
+ * Primary Branch: main
  * Requires PHP: 7.4
  * Requires at least: 6.2
  *
@@ -31,13 +31,63 @@ spl_autoload_register( function ( $class ) {
 	}
 } );
 
+/**
+ * Whether FluentCampaign Pro's Commerce service is available.
+ *
+ * Some features here extend or call Pro classes. Without this guard, deactivating Pro — during
+ * an upgrade, a failed activation, or a lapsed licence — turns a missing feature into a fatal on
+ * every request, because `class X extends \FluentCampaign\...` is resolved at class-load time.
+ * That took gravitykit.com down on 2026-09-18.
+ *
+ * Checked by class rather than by `did_action( 'fluentcampaign_loaded' )`, because this runs on
+ * `init` and only the class actually being extended matters.
+ */
+function customcrm_commerce_is_available() {
+	return class_exists( '\\FluentCampaign\\App\\Services\\Commerce\\Commerce' );
+}
+
+/**
+ * Whether FluentCampaign Pro's smart-link handler is available.
+ *
+ * Checked separately from Commerce above: the two Pro integrations extend different classes, so
+ * ANDing them would disable a working one whenever the other is missing.
+ */
+function customcrm_smart_link_is_available() {
+	return class_exists( '\\FluentCampaign\\App\\Hooks\\Handlers\\SmartLinkHandler' );
+}
+
+/**
+ * Whether FluentCRM core's classes are available.
+ *
+ * Everything this plugin registers is an extension of FluentCRM: the actions extend
+ * `BaseAction`/`WaitTimeAction`, the rest call core models and helpers. With core deactivated
+ * there is nothing to extend, and `class X extends \FluentCrm\...` is resolved at class-load
+ * time — so the plugin fatals on every request instead of simply having nothing to do.
+ *
+ * `BaseAction` is the check because it is the parent of the classes registered below; if it is
+ * present, the funnel API this plugin builds on is present.
+ */
+function customcrm_core_is_available() {
+	return function_exists( 'FluentCrmApi' )
+		&& class_exists( '\\FluentCrm\\App\\Services\\Funnel\\BaseAction' )
+		&& class_exists( '\\FluentCrm\\App\\Services\\Funnel\\Actions\\WaitTimeAction' );
+}
+
 add_action(
 	'init',
 	function () {
+		// Nothing here can run without FluentCRM core; see customcrm_core_is_available().
+		if ( ! customcrm_core_is_available() ) {
+			return;
+		}
+
 		( new \CustomCRM\JSONEventTrackingHandler() )->register();
 
-		$edd_rules = new \CustomCRM\EDDSubscriptionRules();
-		$edd_rules->register();
+		// Needs FluentCampaign Pro's Commerce service.
+		if ( customcrm_commerce_is_available() ) {
+			$edd_rules = new \CustomCRM\EDDSubscriptionRules();
+			$edd_rules->register();
+		}
 
 		( new \CustomCRM\Actions\RandomWaitTimeAction() )->register();
 
@@ -55,14 +105,19 @@ add_action(
 		// Track EDD license activations as FluentCRM events.
 		( new \CustomCRM\EddLicenseActivationTracker() )->register();
 
-		// Remove the default smart link handler.
-		remove_all_actions( 'fluentcrm_smartlink_clicked' );
-		remove_all_actions( 'fluentcrm_smartlink_clicked_direct' );
-		// Register our custom smart link handler.
-		$fix_smart_link_redirects = new \CustomCRM\SmartLinkHandler();
+		// Extends a Pro class, so it cannot even be loaded without Pro. Leaving Pro's own handler
+		// in place is the right fallback: the redirect still works, it just loses the query
+		// parameters this override exists to preserve.
+		if ( customcrm_smart_link_is_available() ) {
+			// Remove the default smart link handler.
+			remove_all_actions( 'fluentcrm_smartlink_clicked' );
+			remove_all_actions( 'fluentcrm_smartlink_clicked_direct' );
+			// Register our custom smart link handler.
+			$fix_smart_link_redirects = new \CustomCRM\SmartLinkHandler();
 
-		add_action( 'fluentcrm_smartlink_clicked', [ $fix_smart_link_redirects, 'handleClick' ], 9, 1 );
-		add_action( 'fluentcrm_smartlink_clicked_direct', [ $fix_smart_link_redirects, 'handleClick' ], 9, 2 );
+			add_action( 'fluentcrm_smartlink_clicked', [ $fix_smart_link_redirects, 'handleClick' ], 9, 1 );
+			add_action( 'fluentcrm_smartlink_clicked_direct', [ $fix_smart_link_redirects, 'handleClick' ], 9, 2 );
+		}
 
 		// Custom CSS editor for FluentCRM email templates.
 		( new \CustomCRM\Integrations\CustomEmailCSS() )->register();
