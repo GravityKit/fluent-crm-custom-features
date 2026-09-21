@@ -310,7 +310,7 @@ class UpdateContactPropertyAction extends BaseAction {
 
 			if ( ! is_array( $value ) && $is_array_type ) {
 				$item_values    = explode( ',', $value );
-				$trimmed_values = array_map( 'trim', $item_values );
+				$trimmed_values = array_filter( array_map( 'trim', $item_values ), 'strlen' );
 				if ( $trimmed_values ) {
 					$values[ $value_key ] = $trimmed_values;
 				}

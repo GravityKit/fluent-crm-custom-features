@@ -95,8 +95,8 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading query params for smart link redirect, nonce not applicable.
 		$query_params = array_diff_key( $_GET, array_flip( $ignored_params ) );
 
-		// Sanitize all forwarded query parameters.
-		$query_params = array_map( 'sanitize_text_field', $query_params );
+		// Sanitize all forwarded query parameters (handles nested arrays).
+		$query_params = map_deep( $query_params, 'sanitize_text_field' );
 		$query_string = http_build_query( $query_params );
 
 		$target_url = $smart_link->target_url;

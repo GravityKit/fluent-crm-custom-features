@@ -20,11 +20,63 @@ class EddLicenseActivationTracker {
 	private const EVENT_DENIED    = 'license_activation_denied';
 
 	/**
+	 * Contact custom fields this tracker writes, slug => label.
+	 *
+	 * @var array<string,string>
+	 */
+	private const USAGE_FIELDS = [
+		'gk_sites_used'  => 'Sites Activated',
+		'gk_sites_limit' => 'Site Limit',
+	];
+
+	/**
 	 * Register hooks.
 	 */
 	public function register(): void {
 		add_action( 'gk/store/license-activated', [ $this, 'trackActivation' ], 10, 1 );
 		add_action( 'gk/store/license-activation-denied', [ $this, 'trackDenied' ], 10, 1 );
+		add_action( 'init', [ $this, 'registerUsageFields' ], 20 );
+	}
+
+	/**
+	 * Register the two contact custom fields syncUsageFields() writes to.
+	 *
+	 * Without these registered, syncUsageFields() filters both slugs out and writes nothing — it
+	 * had been a silent no-op since it was written. Registering them is what gives MAR-80's copy
+	 * its {{contact.custom.gk_sites_used}} / {{contact.custom.gk_sites_limit}} merge tags.
+	 *
+	 * Idempotent and additive: it only ever appends missing slugs, so fields added or reordered in
+	 * the FluentCRM UI are left alone.
+	 */
+	public function registerUsageFields(): void {
+		if ( ! class_exists( '\\FluentCrm\\App\\Models\\CustomContactField' ) ) {
+			return;
+		}
+
+		$model    = new \FluentCrm\App\Models\CustomContactField();
+		$fields   = (array) ( $model->getGlobalFields()['fields'] ?? [] );
+		$existing = wp_list_pluck( $fields, 'slug' );
+		$added    = false;
+
+		foreach ( self::USAGE_FIELDS as $slug => $label ) {
+			if ( in_array( $slug, $existing, true ) ) {
+				continue;
+			}
+
+			$fields[] = [
+				'type'  => 'number',
+				'label' => $label,
+				'slug'  => $slug,
+			];
+
+			$added = true;
+		}
+
+		if ( $added ) {
+			// saveGlobalFields() is the model's own writer: it dedupes by slug and generates one
+			// for any field missing it, so appending and handing back the whole list is safe.
+			$model->saveGlobalFields( $fields );
+		}
 	}
 
 	/**
@@ -42,7 +94,7 @@ class EddLicenseActivationTracker {
 			$license  = $context['license'] ?? null;
 			$customer = $this->getCustomer( $license );
 
-			if ( ! $customer ) {
+			if ( ! $customer || $this->isInternalCustomer( $customer->email ) ) {
 				return;
 			}
 
@@ -57,7 +109,7 @@ class EddLicenseActivationTracker {
 				'provider'  => 'edd',
 				'event_key' => self::EVENT_ACTIVATED,
 				'title'     => 'Activated license key',
-				'value'     => $this->getProductName( $license ),
+				'value'     => $this->buildEventValue( $license, $context ),
 			] );
 
 			// Sites-used / limit power the "active on X of Y sites" progress email.
@@ -85,7 +137,7 @@ class EddLicenseActivationTracker {
 			$license  = $context['license'] ?? null;
 			$customer = $this->getCustomer( $license );
 
-			if ( ! $customer ) {
+			if ( ! $customer || $this->isInternalCustomer( $customer->email ) ) {
 				return;
 			}
 
@@ -100,7 +152,7 @@ class EddLicenseActivationTracker {
 				'provider'  => 'edd',
 				'event_key' => self::EVENT_DENIED,
 				'title'     => 'License activation denied (site limit reached)',
-				'value'     => $this->getProductName( $license ),
+				'value'     => $this->buildEventValue( $license, $context ),
 			] );
 		} catch ( \Throwable $e ) {
 			$this->logFailure( 'denial', $e );
@@ -129,6 +181,69 @@ class EddLicenseActivationTracker {
 		}
 
 		return $customer;
+	}
+
+	/**
+	 * Whether this email belongs to a GravityKit-owned account rather than a customer.
+	 *
+	 * Sixteen @gravitykit.com contacts hold 13,353 of the 64,288 counted activations — 21% — and
+	 * one of them alone holds 13,256. Left in, they dominate every count built on these events and
+	 * would put internal staff into customer-facing automations.
+	 *
+	 * @param string $email Contact email.
+	 * @return bool
+	 */
+	private function isInternalCustomer( string $email ): bool {
+		$domains = apply_filters( 'gk/fluentcrm/internal_email_domains', [ 'gravitykit.com', 'gravityview.co' ] );
+		$at      = strrpos( $email, '@' );
+
+		if ( false === $at ) {
+			return false;
+		}
+
+		$domain = strtolower( substr( $email, $at + 1 ) );
+
+		return in_array( $domain, array_map( 'strtolower', (array) $domains ), true );
+	}
+
+	/**
+	 * Build the event's `value` as JSON so funnel conditions can read individual properties.
+	 *
+	 * FluentCRM's "Event JSON Prop" conditions (JSONEventTrackingHandler) cast every match value
+	 * with (float), so every comparable property here is numeric — a string or a boolean would
+	 * compare as 0. `progress` is precomputed because those conditions compare a property to a
+	 * constant and cannot compare two properties to each other, which is what MAR-80's
+	 * "1 < count < limit" test needs.
+	 *
+	 * `track()` runs this through sanitize_textarea_field(), which leaves JSON structurally intact
+	 * but strips %xx sequences and anything between angle brackets. The URL is stored knowing that.
+	 *
+	 * @param mixed $license License object.
+	 * @param array $context Store action payload.
+	 * @return string JSON, or the bare product name if encoding fails.
+	 */
+	private function buildEventValue( $license, array $context ): string {
+		$product = $this->getProductName( $license );
+		$count   = is_object( $license ) ? (int) $license->activation_count : 0;
+		$limit   = is_object( $license ) ? (int) $license->activation_limit : 0;
+
+		// A limit of 0 means unlimited in EDD, so no site is ever "in progress" toward a cap.
+		$in_progress = ( $limit > 0 && $count > 1 && $count < $limit ) ? 1 : 0;
+
+		$payload = [
+			'product'    => $product,
+			'count'      => $count,
+			'limit'      => $limit,
+			'remaining'  => $limit > 0 ? max( 0, $limit - $count ) : -1,
+			'progress'   => $in_progress,
+			'is_new'     => ! empty( $context['is_new'] ) ? 1 : 0,
+			'license_id' => is_object( $license ) && ! empty( $license->ID ) ? (int) $license->ID : 0,
+			'url'        => (string) ( $context['url'] ?? '' ),
+		];
+
+		$json = wp_json_encode( $payload );
+
+		return false === $json ? $product : $json;
 	}
 
 	/**

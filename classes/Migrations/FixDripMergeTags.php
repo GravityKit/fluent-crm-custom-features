@@ -159,6 +159,7 @@ class FixDripMergeTags {
 		foreach ( $sequences as $seq ) {
 			$settings = maybe_unserialize( $seq->settings );
 			if ( ! is_array( $settings ) || empty( $settings['email_body'] ) ) {
+				++$stats['skipped'];
 				continue;
 			}
 
@@ -166,14 +167,23 @@ class FixDripMergeTags {
 			$updated  = self::convertMergeTags( $original );
 
 			if ( $updated === $original ) {
+				++$stats['skipped'];
 				continue;
 			}
 
 			if ( ! $dry_run ) {
 				$settings['email_body'] = $updated;
-				$db->table( 'fc_funnel_sequences' )
+				$result = $db->table( 'fc_funnel_sequences' )
 					->where( 'id', $seq->id )
 					->update( [ 'settings' => maybe_serialize( $settings ) ] );
+
+				if ( $result !== false ) {
+					++$stats['updated'];
+				} else {
+					++$stats['errors'];
+				}
+			} else {
+				++$stats['updated'];
 			}
 		}
 

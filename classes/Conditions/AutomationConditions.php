@@ -3,7 +3,6 @@
 namespace CustomCRM\Conditions;
 
 use FluentCrm\App\Models\FunnelSubscriber;
-use FluentCrm\App\Services\Helper;
 use FluentCrm\Framework\Support\Arr;
 
 /**
@@ -39,14 +38,15 @@ class AutomationConditions {
 	 * @return array<string,mixed>
 	 */
 	public function addConditionGroups( array $groups, $funnel ): array {
-		// Add Event Tracking group (evaluation handled by FunnelConditionHelper::assessEventTrackingConditions).
-		if ( Helper::isExperimentalEnabled( 'event_tracking' ) ) {
-			$groups['event_tracking'] = [
-				'label'    => __( 'Event Tracking', 'fluent-crm-custom-features' ),
-				'value'    => 'event_tracking',
-				'children' => $this->getEventTrackingChildren(),
-			];
-		}
+		// No Event Tracking group here on purpose. This class used to add one, registered after
+		// core's EventTrackingHandler at the same priority, so it replaced core's. Its children
+		// used the raw event key as the condition property, which no assessor understands:
+		// FunnelConditionHelper::assessEventTrackingConditions() runs the
+		// fluentcrm_contacts_filter_event_tracking filter, whose handlers recognise only
+		// event_tracking_key / _title / _value / _key_count / _json_prop. An unrecognised property
+		// left the query unfiltered, so the contact always came back and the condition evaluated
+		// TRUE — for "has performed" and "has not performed" alike. Core's group is evaluated and
+		// richer, so it is left to win.
 
 		// Add Automation Completion group.
 		$groups['automations'] = [
@@ -67,36 +67,6 @@ class AutomationConditions {
 		return $groups;
 	}
 
-	/**
-	 * Get event tracking condition options.
-	 *
-	 * Provides a list of tracked event keys that can be used as conditions.
-	 *
-	 * @return array<int,array<string,mixed>>
-	 */
-	private function getEventTrackingChildren(): array {
-		$events = fluentCrmDb()->table( 'fc_event_tracking' )
-			->select( 'event_key', 'title' )
-			->groupBy( 'event_key' )
-			->get();
-
-		$children = [];
-		foreach ( $events as $event ) {
-			$children[] = [
-				'label'             => $event->title ?: $event->event_key,
-				'value'             => $event->event_key,
-				'type'              => 'selections',
-				'options'           => [
-					'yes' => __( 'Yes - Has performed', 'fluent-crm-custom-features' ),
-					'no'  => __( 'No - Has not performed', 'fluent-crm-custom-features' ),
-				],
-				'is_multiple'       => false,
-				'is_singular_value' => true,
-			];
-		}
-
-		return $children;
-	}
 
 	/**
 	 * Get automation completion condition options.
@@ -155,11 +125,14 @@ class AutomationConditions {
 				'value'             => 'edd_license_' . $product->download_id,
 				'type'              => 'selections',
 				'options'           => [
-					'yes' => __( 'Yes - Has active license', 'fluent-crm-custom-features' ),
-					'no'  => __( 'No - Does not have active license', 'fluent-crm-custom-features' ),
+					'valid'    => __( 'Valid license (active or inactive)', 'fluent-crm-custom-features' ),
+					'active'   => __( 'Active (activated on a site)', 'fluent-crm-custom-features' ),
+					'inactive' => __( 'Inactive (not activated)', 'fluent-crm-custom-features' ),
+					'expired'  => __( 'Expired', 'fluent-crm-custom-features' ),
+					'disabled' => __( 'Disabled', 'fluent-crm-custom-features' ),
 				],
-				'is_multiple'       => false,
-				'is_singular_value' => true,
+				'is_multiple'       => true,
+				'is_singular_value' => false,
 			];
 		}
 
@@ -194,20 +167,14 @@ class AutomationConditions {
 			$customer = new \EDD_Customer( $subscriber->email );
 		}
 		if ( ! $customer || ! $customer->id ) {
-			// No EDD customer — all "has active license" conditions fail.
-			foreach ( $conditions as $condition ) {
-				$value = $condition['data_value'] ?? 'yes';
-				if ( $value === 'yes' ) {
-					return false;
-				}
-			}
-			return $result;
+			// No EDD customer — no license can match.
+			return false;
 		}
 
 		foreach ( $conditions as $condition ) {
 			$prop     = $condition['data_key'];
 			$operator = $condition['operator'] ?? '=';
-			$value    = $condition['data_value'] ?? 'yes';
+			$value    = $condition['data_value'] ?? [];
 
 			if ( strpos( $prop, 'edd_license_' ) !== 0 ) {
 				continue;
@@ -218,20 +185,38 @@ class AutomationConditions {
 				continue;
 			}
 
-			$has_active_license = fluentCrmDb()->table( 'edd_licenses' )
+			// Backward compatibility: convert old yes/no values.
+			if ( $value === 'yes' ) {
+				$value = [ 'valid' ];
+			} elseif ( $value === 'no' ) {
+				$value    = [ 'valid' ];
+				$operator = ( $operator === '=' || $operator === 'in' ) ? '!=' : '=';
+			}
+
+			// Normalize value to an array of selected options.
+			if ( ! is_array( $value ) ) {
+				$value = [ $value ];
+			}
+
+			// Map selected options to EDD license statuses.
+			$statuses = $this->mapLicenseOptionToStatuses( $value );
+
+			if ( empty( $statuses ) ) {
+				return false;
+			}
+
+			$has_matching_license = fluentCrmDb()->table( 'edd_licenses' )
 				->where( 'customer_id', $customer->id )
 				->where( 'download_id', $download_id )
-				->whereIn( 'status', [ 'active', 'inactive' ] )
+				->whereIn( 'status', $statuses )
 				->exists();
 
-			$expects_active = ( $value === 'yes' );
-
 			if ( $operator === '=' || $operator === 'in' ) {
-				if ( $has_active_license !== $expects_active ) {
+				if ( ! $has_matching_license ) {
 					return false;
 				}
 			} elseif ( $operator === '!=' || $operator === 'not_in' ) {
-				if ( $has_active_license === $expects_active ) {
+				if ( $has_matching_license ) {
 					return false;
 				}
 			} else {
@@ -240,6 +225,32 @@ class AutomationConditions {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Map UI option values to EDD license status strings.
+	 *
+	 * @param array<string> $options Selected option values (e.g. ['valid', 'expired']).
+	 *
+	 * @return array<string> EDD license statuses to query.
+	 */
+	private function mapLicenseOptionToStatuses( array $options ): array {
+		$status_map = [
+			'valid'    => [ 'active', 'inactive' ],
+			'active'   => [ 'active' ],
+			'inactive' => [ 'inactive' ],
+			'expired'  => [ 'expired' ],
+			'disabled' => [ 'disabled' ],
+		];
+
+		$statuses = [];
+		foreach ( $options as $option ) {
+			if ( isset( $status_map[ $option ] ) ) {
+				$statuses = array_merge( $statuses, $status_map[ $option ] );
+			}
+		}
+
+		return array_unique( $statuses );
 	}
 
 	/**
