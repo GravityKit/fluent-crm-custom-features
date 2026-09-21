@@ -1,0 +1,116 @@
+name: Deploy to production
+
+# Pushing plugin code to main deploys it to www.gravitykit.com.
+#
+# This plugin has taken the site down twice, both times because a file referenced
+# at bootstrap was not present in the deployed tree, so the lint gate below is not
+# ceremony: it runs php -l over every shipped file AND asserts that every class the
+# bootstrap instantiates actually exists in the checkout. A deploy that fails either
+# check never reaches the server.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**.php'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Lint every shipped PHP file
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            php -l "$f" > /dev/null || { echo "::error file=$f::php -l failed"; fail=1; }
+          done < <(find . -name '*.php' -not -path './vendor/*' -not -path './vendor-prefixed/*' -not -path './.git/*')
+          exit $fail
+
+      - name: Assert the bootstrap's classes exist in this checkout
+        run: |
+          set -euo pipefail
+          fail=0
+          # Every `new \CustomCRM\Foo\Bar(` must map to classes/Foo/Bar.php.
+          while IFS= read -r class; do
+            path="classes/$(printf '%s' "$class" | sed 's|^\\CustomCRM\\||; s|\\|/|g').php"
+            if [ ! -f "$path" ]; then
+              echo "::error::bootstrap instantiates $class but $path is missing from this branch"
+              fail=1
+            fi
+          done < <(grep -oE 'new \\CustomCRM\\[A-Za-z0-9_\\]+' fluent-crm-custom-features.php | sed 's/^new //' | sort -u)
+          [ $fail -eq 0 ] && echo "all bootstrap classes present"
+          exit $fail
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -T 15 "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Rsync plugin to production
+        run: |
+          set -euo pipefail
+          rsync -avz --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='node_modules/' \
+            --exclude='vendor/' \
+            --exclude='vendor-prefixed/' \
+            --exclude='composer.lock' \
+            --exclude='strauss.phar' \
+            --exclude='.DS_Store' \
+            --exclude='docs/' \
+            --exclude='tests/' \
+            --exclude='reports/' \
+            --exclude='.phpunit.result.cache' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -p ${{ secrets.DEPLOY_PORT }}" \
+            ./ \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/wp-content/plugins/fluent-crm-custom-features/"
+
+      - name: Verify the plugin still loads on production
+        run: |
+          set -euo pipefail
+          cat > /tmp/verify.php <<'PHP'
+          <?php
+          $missing = [];
+          foreach ( [
+            'CustomCRM\\EddLicenseActivationTracker',
+            'CustomCRM\\Conditions\\AutomationConditions',
+            'CustomCRM\\JSONEventTrackingHandler',
+          ] as $c ) {
+            if ( ! class_exists( $c ) ) { $missing[] = $c; }
+          }
+          echo $missing ? 'MISSING: ' . implode( ', ', $missing ) . "\n" : "classes OK\n";
+          echo 'plugin active: ' . var_export( is_plugin_active( 'fluent-crm-custom-features/fluent-crm-custom-features.php' ), true ) . "\n";
+          exit( $missing ? 1 : 0 );
+          PHP
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -P "${{ secrets.DEPLOY_PORT }}" \
+            /tmp/verify.php "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/gk-fcf-verify.php"
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -p "${{ secrets.DEPLOY_PORT }}" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd ${{ secrets.DEPLOY_PATH }} && wp eval-file /tmp/gk-fcf-verify.php; rc=\$?; rm -f /tmp/gk-fcf-verify.php; exit \$rc"
+
+      - name: Smoke-check the site
+        run: |
+          set -euo pipefail
+          for url in https://www.gravitykit.com/ https://www.gravitykit.com/pricing/; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "$url")
+            echo "$url -> $code"
+            [ "$code" = "200" ] || { echo "::error::$url returned $code"; exit 1; }
+          done
