@@ -3,7 +3,12 @@
 namespace CustomCRM\Integrations;
 
 /**
- * Adds a Custom CSS admin page under FluentCRM and injects the CSS into all outgoing emails.
+ * Injects the versioned base email CSS, plus any CSS saved on the Custom CSS admin page, into all
+ * outgoing emails.
+ *
+ * The base file holds the rules that keep FluentCRM 3.2.0 email rendering the way 2.9.x did. It is
+ * injected first and the admin-page CSS after it, so the page can add or override rules but cannot
+ * remove the base ones.
  */
 class CustomEmailCSS {
 
@@ -11,6 +16,11 @@ class CustomEmailCSS {
 	 * Option key used to store the custom CSS.
 	 */
 	private const OPTION_KEY = '_customcrm_custom_email_css';
+
+	/**
+	 * Base CSS file, relative to the plugin root.
+	 */
+	private const BASE_CSS_FILE = 'assets/email-base.css';
 
 	/**
 	 * Admin page slug.
@@ -57,9 +67,14 @@ class CustomEmailCSS {
 	 * @return string
 	 */
 	public function inject_css( string $html, $email_body = '', $template_config = [] ): string {
-		$css = $this->get_css();
+		$css   = $this->get_base_css();
+		$added = $this->get_css();
 
-		if ( empty( $css ) ) {
+		if ( '' !== $added ) {
+			$css = '' === $css ? $added : $css . "\n\n" . $added;
+		}
+
+		if ( '' === $css ) {
 			return $html;
 		}
 
@@ -179,6 +194,21 @@ class CustomEmailCSS {
 				?>
 			</p>
 
+			<p>
+				<?php
+				printf(
+					/* translators: %s: path to the base CSS file */
+					esc_html__( 'The base email CSS ships with the plugin in %s and is always applied first. CSS saved here is added after it, so it can override the base rules but not remove them. Change the base rules in the plugin repository.', 'fluent-crm-custom-features' ),
+					'<code>' . esc_html( self::BASE_CSS_FILE ) . '</code>'
+				);
+				?>
+			</p>
+
+			<details>
+				<summary><?php esc_html_e( 'Show the base CSS', 'fluent-crm-custom-features' ); ?></summary>
+				<pre class="code" style="max-height:24em;overflow:auto;"><?php echo esc_html( $this->get_base_css() ); ?></pre>
+			</details>
+
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'fluentcrm_custom_css_save' ); ?>
 				<input type="hidden" name="action" value="save_fluentcrm_custom_css">
@@ -197,6 +227,32 @@ class CustomEmailCSS {
 			</form>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Read the versioned base CSS shipped with the plugin.
+	 *
+	 * @return string Empty when the file is missing, which is logged: every email would then lose its
+	 *                parity rules.
+	 */
+	private function get_base_css(): string {
+		static $css = null;
+
+		if ( null !== $css ) {
+			return $css;
+		}
+
+		$path = dirname( __DIR__, 2 ) . '/' . self::BASE_CSS_FILE;
+		$read = is_readable( $path ) ? file_get_contents( $path ) : false; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- local plugin file.
+
+		if ( false === $read ) {
+			error_log( 'fluent-crm-custom-features: base email CSS missing at ' . $path ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			$read = '';
+		}
+
+		$css = $read;
+
+		return $css;
 	}
 
 	/**
