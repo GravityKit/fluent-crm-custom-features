@@ -60,11 +60,11 @@ class EmailRemToPx {
 			return $html;
 		}
 
+		// Only inside real tags, so a CSS snippet in body text is left alone. The tag pattern skips
+		// over quoted attribute values, which may contain `>`.
 		$converted = preg_replace_callback(
-			'/\bstyle=(["\'])(.*?)\1/is',
-			function ( array $m ): string {
-				return 'style=' . $m[1] . $this->to_px( $m[2] ) . $m[1];
-			},
+			'/<[a-z][a-z0-9-]*\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>/i',
+			[ $this, 'convert_tag' ],
 			$html
 		);
 
@@ -78,6 +78,35 @@ class EmailRemToPx {
 
 		// A PCRE failure returns null; sending the email unconverted beats sending it empty.
 		return null === $converted ? $html : $converted;
+	}
+
+	/**
+	 * Convert rem to px in a single tag's `style` attribute, quoted or unquoted.
+	 *
+	 * @param array<int,string> $matches preg_replace_callback matches; [0] is the whole tag.
+	 *
+	 * @return string
+	 */
+	private function convert_tag( array $matches ): string {
+		$tag = $matches[0];
+		if ( false === stripos( $tag, 'rem' ) ) {
+			return $tag;
+		}
+
+		// `style` must be its own attribute: preceded by whitespace, so `data-style` never matches.
+		$result = preg_replace_callback(
+			'/(?<=\s)(style\s*=\s*)(?:(["\'])(.*?)\2|([^\s"\'>]+))/is',
+			function ( array $m ): string {
+				if ( isset( $m[4] ) && '' !== $m[4] ) {
+					return $m[1] . $this->to_px( $m[4] );
+				}
+
+				return $m[1] . $m[2] . $this->to_px( $m[3] ) . $m[2];
+			},
+			$tag
+		);
+
+		return null === $result ? $tag : $result;
 	}
 
 	/**
