@@ -130,6 +130,10 @@ add_action(
 		// the header band's inner spacing. Restores it until the padding is authored into blocks.
 		( new \CustomCRM\Integrations\EmailGroupSpacing() )->register();
 
+		// FluentCRM 3.2.0 writes theme font sizes into email as rem, which follows the mail client's
+		// root size rather than the email's. Converts them to px so every client renders the same.
+		( new \CustomCRM\Integrations\EmailRemToPx() )->register();
+
 		// Contact and company enrichment via external providers (PDL, etc.).
 		( new \CustomCRM\Actions\EnrichContactAction() );
 	},
