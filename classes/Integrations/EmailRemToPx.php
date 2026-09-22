@@ -117,10 +117,16 @@ class EmailRemToPx {
 	 * @return string
 	 */
 	private function to_px( string $css ): string {
+		// Quoted strings and url() are matched first and returned untouched, so `content: "1rem"`
+		// and an image path like `url(/img/hero-2rem.png)` are never rewritten.
 		$result = preg_replace_callback(
-			'/(?<![\w.])(-?\d*\.?\d+)rem\b/i',
+			'/("(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\'|url\([^)]*\))|(?<![\w.])(-?\d*\.?\d+)rem\b/i',
 			static function ( array $m ): string {
-				$px = number_format( (float) $m[1] * self::PX_PER_REM, 2, '.', '' );
+				if ( '' !== $m[1] ) {
+					return $m[0];
+				}
+
+				$px = number_format( (float) $m[2] * self::PX_PER_REM, 2, '.', '' );
 
 				return rtrim( rtrim( $px, '0' ), '.' ) . 'px';
 			},
