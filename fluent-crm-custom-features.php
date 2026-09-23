@@ -35,7 +35,7 @@ spl_autoload_register( function ( $class ) {
  * Whether FluentCampaign Pro's Commerce service is available.
  *
  * Some features here extend or call Pro classes. Without this guard, deactivating Pro — during
- * an upgrade, a failed activation, or a lapsed licence — turns a missing feature into a fatal on
+ * an upgrade, a failed activation, or a lapsed license — turns a missing feature into a fatal on
  * every request, because `class X extends \FluentCampaign\...` is resolved at class-load time.
  * That took gravitykit.com down on 2026-09-18.
  *
@@ -122,7 +122,7 @@ add_action(
 		// Custom CSS editor for FluentCRM email templates.
 		( new \CustomCRM\Integrations\CustomEmailCSS() )->register();
 
-		// Resolves any palette colour token FluentCRM left unreplaced. Logs loudly when it fires,
+		// Resolves any palette color token FluentCRM left unreplaced. Logs loudly when it fires,
 		// because a firing means the theme-level editor-color-palette fix stopped working.
 		( new \CustomCRM\Integrations\EmailPaletteFallback() )->register();
 

@@ -19,7 +19,7 @@ namespace CustomCRM\Integrations;
  * core/heading, core/paragraph and core/list. `core/group` is not in it, so groups now render
  * flush and the header band hugs the logo.
  *
- * The durable fix is to author the padding into the blocks themselves, which 3.2.0 honours via
+ * The durable fix is to author the padding into the blocks themselves, which 3.2.0 honors via
  * `style.spacing.padding` — verified through the full render chain. That is a migration across
  * thousands of stored campaign bodies, so this class restores the prior appearance at render time
  * in the meantime. It only ever ADDS padding to a group that declares none, so a block that does
@@ -74,7 +74,7 @@ class EmailGroupSpacing {
 		}
 
 		// Both quote styles: BlockParser emits single-quoted attributes and only Emogrifier
-		// normalises them to double. This filter runs after Emogrifier today, but matching one
+		// normalizes them to double. This filter runs after Emogrifier today, but matching one
 		// style only would silently skip every group if that ordering ever changed.
 		return (string) preg_replace_callback(
 			'/<div\b[^>]*\bclass=(["\'])[^"\']*\bfc_group\b[^"\']*\1[^>]*>/i',

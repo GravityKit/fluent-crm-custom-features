@@ -50,8 +50,8 @@ code {
 }
 
 /* FluentCRM 3.2.0 renders block images as display:inline-block, which adds baseline
-   descender space under the image and makes a centred logo band ~5px taller than 2.9.x,
-   which used display:block + margin auto. Scoped to centre-aligned images only. */
+   descender space under the image and makes a centered logo band ~5px taller than 2.9.x,
+   which used display:block + margin auto. Scoped to center-aligned images only. */
 .fc_image {
 	margin-bottom: 10px;
 }
@@ -93,10 +93,10 @@ td.la-root-column > div:not([class]) {
 	margin-bottom: 10px;
 }
 
-/* 2.9.x set no link colour, so every client picked its own blue. 3.2.0 defaults
+/* 2.9.x set no link color, so every client picked its own blue. 3.2.0 defaults
    link_color to #0693e3 (BlockEditorHelper) and emits `a { color: #0693e3 }` for every
    campaign, since none of ours store a link_color. #0624e2 is 8.9:1 on white and reads
-   as a link beside #202020 body text. Buttons keep their own colour. */
+   as a link beside #202020 body text. Buttons keep their own color. */
 .fc_email_body a:not(.fc_button):not(.wp-block-button__link) {
 	color: #0624e2;
 }
