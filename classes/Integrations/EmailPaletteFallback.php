@@ -1,6 +1,6 @@
 <?php
 /**
- * Safety net that resolves FluentCRM palette colour tokens left unreplaced in outgoing email.
+ * Safety net that resolves FluentCRM palette color tokens left unreplaced in outgoing email.
  *
  * @package CustomCRM
  */
@@ -8,11 +8,11 @@
 namespace CustomCRM\Integrations;
 
 /**
- * Last-resort safety net for unresolved FluentCRM colour tokens in outgoing email.
+ * Last-resort safety net for unresolved FluentCRM color tokens in outgoing email.
  *
- * FluentCRM 3.2.0's block email parser writes named palette colours into inline style attributes
+ * FluentCRM 3.2.0's block email parser writes named palette colors into inline style attributes
  * as `var(--fcom--color--{slug})` (GutenbergEmailParser, for text, background, border and
- * separator colours) and expects `BlockEditorHelper::replaceStyleSlugsWithValues()` to swap them
+ * separator colors) and expects `BlockEditorHelper::replaceStyleSlugsWithValues()` to swap them
  * back to hex before the mail goes out. That swap is driven by `Helper::getThemeColorPalette()`,
  * which reads the palette from theme.json only when `wp_is_block_theme()` is true and otherwise
  * falls back to `get_theme_support( 'editor-color-palette' )`.
@@ -56,7 +56,7 @@ class EmailPaletteFallback {
 	];
 
 	/**
-	 * Variable prefixes FluentCRM emits for named palette colours.
+	 * Variable prefixes FluentCRM emits for named palette colors.
 	 *
 	 * @var string[]
 	 */
@@ -131,7 +131,7 @@ class EmailPaletteFallback {
 
 		$palette = wp_get_global_settings( [ 'color', 'palette' ] );
 
-		// Theme colours first, then core defaults, so a theme slug always wins a name collision.
+		// Theme colors first, then core defaults, so a theme slug always wins a name collision.
 		foreach ( [ 'theme', 'default' ] as $group ) {
 			foreach ( (array) ( $palette[ $group ] ?? [] ) as $color ) {
 				if ( empty( $color['slug'] ) || empty( $color['color'] ) ) {
@@ -169,7 +169,7 @@ class EmailPaletteFallback {
 		}
 
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Deliberate:
-		// this line firing is the alarm. It only runs when FluentCRM failed to resolve a colour
+		// this line firing is the alarm. It only runs when FluentCRM failed to resolve a color
 		// token, which means the theme-level fix regressed and customer email is about to ship
 		// with a broken header. Silent recovery here would hide the next regression.
 		error_log(
