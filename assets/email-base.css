@@ -1,0 +1,102 @@
+body, td, p {
+  line-height: 1.6;
+}
+
+p {
+	margin: 0 0 14px 0;
+}
+
+ul li {
+	padding-bottom: 3px;
+	margin: 0 0 3px 0;
+	line-height: 1.7;
+}
+
+ol li {
+	margin-bottom: 0;
+	line-height: 1.6;
+}
+
+code {
+  background-color: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.wp-block-group,
+.fc_group {
+	margin-top: 0;
+	margin-bottom: 10px;
+}
+
+.wp-block-group *:first-child,
+.fc_group *:first-child {
+	margin-top: 0;
+}
+.wp-block-group *:last-child,
+.fc_group *:last-child {
+	margin-bottom: 0;
+}
+
+/* FluentCRM 3.2.0 ships .fc_button with padding: 8px 20px; 2.9.x rendered 12px 18px.
+   No campaign authors its own button padding (checked all 3,816 button blocks), so a
+   blanket override is safe here — unlike border-radius, which 88 blocks do declare. */
+.fc_button {
+	padding: 12px 18px;
+	line-height: 1.8;
+	margin-top: 0;
+	margin-bottom: 4px;
+}
+
+/* FluentCRM 3.2.0 renders block images as display:inline-block, which adds baseline
+   descender space under the image and makes a centred logo band ~5px taller than 2.9.x,
+   which used display:block + margin auto. Scoped to centre-aligned images only. */
+.fc_image {
+	margin-bottom: 10px;
+}
+
+.fc_image img {
+	display: block;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+.fc_image.fc_align_center img {
+	margin-left: auto;
+	margin-right: auto;
+}
+
+/* GK-PARITY-BLOCK-3 -- FluentCRM 3.2.0 parity, verified against 20 pre-upgrade funnel sends.
+   Headings: 3.2.0 puts every block in its own table cell, so a heading's 7px top margin no
+   longer collapses with the previous paragraph's 14px bottom margin (gap went 14 -> 21).
+   Lists: 3.2.0 adds padding-inline-end: 30px to .fc_list_item, narrowing list text by 30px
+   and wrapping lines 2.9.x did not wrap. List items were line-height 170% in 2.9.x. */
+h1, h2, h3, h4, h5, h6 {
+	margin-top: 0;
+}
+
+.fc_list_item {
+	padding-inline-end: 0;
+	padding-right: 0;
+}
+
+ul, ol {
+	margin-top: 0;
+}
+
+/* 2.9.x rendered a spacer block as a bare div, and the paragraph after it carried a
+   10px top margin. With p margin-top zeroed for the table-cell layout, that 10px has to
+   come from the spacer instead. Every class-less div directly inside a root column is a
+   spacer (verified across 20 sends: 31 of them, all 10px tall and empty). */
+td.la-root-column > div:not([class]) {
+	margin-bottom: 10px;
+}
+
+/* 2.9.x set no link colour, so every client picked its own blue. 3.2.0 defaults
+   link_color to #0693e3 (BlockEditorHelper) and emits `a { color: #0693e3 }` for every
+   campaign, since none of ours store a link_color. #0624e2 is 8.9:1 on white and reads
+   as a link beside #202020 body text. Buttons keep their own colour. */
+.fc_email_body a:not(.fc_button):not(.wp-block-button__link) {
+	color: #0624e2;
+}

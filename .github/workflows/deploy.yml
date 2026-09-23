@@ -12,6 +12,7 @@ on:
     branches: [ main ]
     paths:
       - '**.php'
+      - 'assets/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
@@ -53,7 +54,12 @@ jobs:
               fail=1
             fi
           done < <(grep -oE 'new \\CustomCRM\\[A-Za-z0-9_\\]+' fluent-crm-custom-features.php | sed 's/^new //' | sort -u)
-          [ $fail -eq 0 ] && echo "all bootstrap classes present"
+          # Every email's parity rules come from this file; without it they all silently drop.
+          if [ ! -s assets/email-base.css ]; then
+            echo "::error::assets/email-base.css is missing or empty"
+            fail=1
+          fi
+          [ $fail -eq 0 ] && echo "all bootstrap classes present, base email CSS present"
           exit $fail
 
       - name: Set up SSH
@@ -96,7 +102,9 @@ jobs:
           ] as $c ) {
             if ( ! class_exists( $c ) ) { $missing[] = $c; }
           }
-          echo $missing ? 'MISSING: ' . implode( ', ', $missing ) . "\n" : "classes OK\n";
+          $css = WP_PLUGIN_DIR . '/fluent-crm-custom-features/assets/email-base.css';
+          if ( ! is_readable( $css ) || 0 === filesize( $css ) ) { $missing[] = 'assets/email-base.css'; }
+          echo $missing ? 'MISSING: ' . implode( ', ', $missing ) . "\n" : "classes OK, base email CSS OK\n";
           echo 'plugin active: ' . var_export( is_plugin_active( 'fluent-crm-custom-features/fluent-crm-custom-features.php' ), true ) . "\n";
           exit( $missing ? 1 : 0 );
           PHP
