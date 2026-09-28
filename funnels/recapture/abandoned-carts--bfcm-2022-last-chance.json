@@ -1,0 +1,84 @@
+{
+ "title": "Recapture: BFCM 2022 last chance",
+ "trigger_name": "fc_ab_cart_simulation_edd",
+ "status": "draft",
+ "conditions": {
+  "cart_conditions": [
+   []
+  ],
+  "active_once": "no",
+  "require_subscribed": "no"
+ },
+ "settings": {
+  "priority": 5
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (abandoned carts). Recapture IDs: 63876f4eaff3f300286173f4. Recapture ran this series in the window 2023-10-24 to 2023-10-25 (last configured); publish and unpublish on the matching dates."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 5 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "5",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "BFCM 2022 last chance",
+   "description": "⚠️ Your 50% off cart is about to expire",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "BFCM 2022 last chance",
+     "email_subject": "⚠️ Your 50% off cart is about to expire",
+     "email_pre_header": "It is not too late to claim the best deal of the year— it’s in this email",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Our 50% off sale is over, but you still have a chance!</h2>\n<p>Our Black Friday sale is over—But we saved the items in your cart, along with the 50% discount! This is the lowest price on {{ab_cart_edd.first_product_name}} for at least the next 11 months, but it's going to expire <i>very</i> soon.</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#f7751f;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Check out with 50% off</a></p>\nIf you are considering our plugins, <b>don’t wait—grab this discount now! </b>There's no risk: all GravityKit purchases are protected by our 30-day money-back guarantee.<p><br></p><p>Here's a reminder of what we saved for you 👇</p>\n<div style=\"height:30px\"></div>\n{{ab_cart_edd.cart_items_table}}\n<p><br></p><p>- Zack with GravityKit</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "bfcm-2022-last-chance",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

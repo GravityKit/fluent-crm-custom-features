@@ -1,0 +1,84 @@
+{
+ "title": "Recapture winbacks: 30 Days - Single plugins",
+ "trigger_name": "edd_update_payment_status",
+ "status": "draft",
+ "conditions": {
+  "update_type": "update",
+  "product_ids": [],
+  "product_categories": [],
+  "purchase_type": "all",
+  "run_multiple": "yes"
+ },
+ "settings": {
+  "subscription_status": "subscribed"
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (winbacks). Recapture IDs: 643fc8a9f680d70027245f42. Recapture had no conditions on this campaign, so it applies to every order."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 30 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "30",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "30 Days - Single plugins",
+   "description": "We miss you...",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "30 Days - Single plugins",
+     "email_subject": "We miss you...",
+     "email_pre_header": "You will love these Gravity Forms add-ons.",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Hey {{contact.first_name|Hey}}, how is your website working for you?</h2>\n<p>We have a lot more <a href=\"https://www.gravitykit.com/extensions/\" target=\"_blank\" rel=\"noopener noreferrer\"><b>powerful Gravity Forms add-ons</b></a> in our collection that we think you would love! In fact, we offer the best solutions for display, editing, importing and exporting Gravity Forms data! </p><p><br></p><p>Build directories on Gravity Forms? Check ✅</p><p>Perform advanced calculations on your data? Check ✅</p><p>Create and share business reports? Check ✅</p><p>Bulk update form submissions? Check ✅</p><p>LOADS of other functionalities that will make you go 😲? <b>Check</b> ✅</p><p><br></p><p>What do you say? We promise there’s something worth checking out.</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"https://www.gravitykit.com/pricing/?focus=core-extensions\" style=\"display:inline-block;background:#F7751F;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Shop the best Gravity Forms add-ons</a></p>\n<p>All the best,</p><p><br></p><p>Zack Katz</p><p>Founder of GravityKit</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "30-days-single-plugins",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

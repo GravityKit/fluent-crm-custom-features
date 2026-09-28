@@ -1,0 +1,84 @@
+{
+ "title": "Recapture: NOT POSSIBLE YET",
+ "trigger_name": "fc_ab_cart_simulation_edd_renewal",
+ "status": "draft",
+ "conditions": {
+  "cart_conditions": [
+   []
+  ],
+  "active_once": "no",
+  "require_subscribed": "no"
+ },
+ "settings": {
+  "priority": 5
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (abandoned carts). Recapture IDs: 61eeff598b433600270debcb."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 20 minutes",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "20",
+    "wait_time_unit": "minutes",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "[NOT POSSIBLE YET] Renewals",
+   "description": "You didn't finish renewing your license!\t",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "[NOT POSSIBLE YET] Renewals",
+     "email_subject": "You didn't finish renewing your license!\t",
+     "email_pre_header": "We saved your cart!",
+     "email_body": "<p>Hi {{contact.first_name|there}}!</p><p><br></p><p class=\"\">You were renewing your {{ab_cart_edd_renewal.first_product_name}} license but didn't finish checking out. Don't forget to renew your license so you will continue to receive important plugin updates and support.</p>\n{{ab_cart_edd_renewal.cart_items_table}}\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd_renewal.recovery_url##\" style=\"display:inline-block;background:#f7751f;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Complete License Renewal</a></p>\n<p>If you ran into a problem and that stopped you from checking out (or if you have any questions or concerns), please respond to this email and we’ll get right on it. Thanks!<br></p><p><br></p><p>– Zack with GravityView 👨‍🚀</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "not-possible-yet-renewals",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

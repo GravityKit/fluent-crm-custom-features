@@ -1,0 +1,148 @@
+{
+ "title": "Abandoned renewal (EDD) – 2 emails",
+ "trigger_name": "fc_ab_cart_simulation_edd_renewal",
+ "status": "draft",
+ "conditions": {
+  "cart_conditions": [
+   []
+  ],
+  "active_once": "no",
+  "require_subscribed": "no"
+ },
+ "settings": {
+  "priority": 10
+ },
+ "sticky_note": {
+  "content": "License renewals left at checkout. No discount. The run is cancelled as soon as the license is renewed, whether through this link, another checkout, auto-renew or an admin."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 30 minutes",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "30",
+    "wait_time_unit": "minutes",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Renewal email 1: Finish renewing",
+   "description": "Your GravityKit renewal is waiting",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Renewal email 1: Finish renewing",
+     "email_subject": "Your GravityKit renewal is waiting",
+     "email_pre_header": "Your license {{ab_cart_edd_renewal.license_status|is due for renewal}}.",
+     "email_body": "<p>Hi {{contact.first_name|there}},</p><p>You started renewing your license for {{ab_cart_edd_renewal.product_names|your GravityKit products}} but didn’t finish checking out. Your license {{ab_cart_edd_renewal.license_status|is due for renewal}}.</p><p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd_renewal.recovery_url##\" style=\"display:inline-block;background:#4f46e5;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Finish Renewing</a></p><p>An active license keeps these coming:</p><ul><li>Plugin updates in your WordPress dashboard, including security and compatibility fixes</li><li>Help from GravityKit support</li><li>New features as we release them</li></ul><p>Here is what’s waiting at checkout:</p>{{ab_cart_edd_renewal.cart_items_table}}<p>If something went wrong at checkout, or you have a question about your renewal, just reply to this email and we’ll help.</p><p>All the best,<br>The GravityKit team</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "renewal-cart-1",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": 3,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 2 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "2",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 4,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Renewal email 2: Reminder",
+   "description": "Still planning to renew?",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Renewal email 2: Reminder",
+     "email_subject": "Still planning to renew?",
+     "email_pre_header": "Your renewal is still at checkout.",
+     "email_body": "<p>Hi {{contact.first_name|there}},</p><p>Your renewal for {{ab_cart_edd_renewal.product_names|your GravityKit products}} is still waiting at checkout. Your license {{ab_cart_edd_renewal.license_status|is due for renewal}}.</p><p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd_renewal.recovery_url##\" style=\"display:inline-block;background:#4f46e5;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Renew My License</a></p><p>You can see every license and when it expires on your <a href=\"https://www.gravitykit.com/account/\">Account page</a>.</p><p>If you’ve decided not to renew, we’d like to know why. Reply to this email; we read every reply.</p><p>All the best,<br>The GravityKit team</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "renewal-cart-2",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

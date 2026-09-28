@@ -1,0 +1,84 @@
+{
+ "title": "Recapture: Final Email",
+ "trigger_name": "fc_ab_cart_simulation_edd",
+ "status": "draft",
+ "conditions": {
+  "cart_conditions": [
+   []
+  ],
+  "active_once": "no",
+  "require_subscribed": "no"
+ },
+ "settings": {
+  "priority": 5
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (abandoned carts). Recapture IDs: 60bfcd92c332e400324d34e3. Discounts: usd20. Check that store-wide codes exist and are active in EDD before publishing."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 7 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "7",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Final Email",
+   "description": "Your cart is about to expire!",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Final Email",
+     "email_subject": "Your cart is about to expire!",
+     "email_pre_header": "",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Your cart is about to expire!</h2>\n<p>Just a heads up, <strong>your saved cart is about to expire</strong>.</p><p><br></p><p>If you are ready to complete your purchase, simply click the button below to return to the checkout.</p><p><br></p><p>If you're still not ready, we understand. We’ll be here if you need us!</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#F7751F;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Complete Checkout</a></p>\n{{ab_cart_edd.cart_items_table}}\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#F7751F;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Complete Checkout</a></p>\n<p>Your code: <strong>{{ab_cart_edd.discount.usd20.code}}</strong> ({{ab_cart_edd.discount.usd20.amount}} off, applied for you when you use the button above).</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "final-email",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

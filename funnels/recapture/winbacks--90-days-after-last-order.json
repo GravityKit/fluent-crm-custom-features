@@ -1,0 +1,84 @@
+{
+ "title": "Recapture winbacks: 90 Days After Last Order",
+ "trigger_name": "edd_update_payment_status",
+ "status": "draft",
+ "conditions": {
+  "update_type": "update",
+  "product_ids": [],
+  "product_categories": [],
+  "purchase_type": "all",
+  "run_multiple": "yes"
+ },
+ "settings": {
+  "subscription_status": "subscribed"
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (winbacks). Recapture IDs: 60bfcd92c332e400324d34e9. Recapture had no conditions on this campaign, so it applies to every order."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 90 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "90",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "90 Days After Last Order",
+   "description": "Not good enough, eh?",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "90 Days After Last Order",
+     "email_subject": "Not good enough, eh?",
+     "email_pre_header": "OK, ok...we were holding out on you",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Boy {{contact.first_name}}, you're a tough one.</h2>\n<p>We wanted to get you back.  You didn't bite.  Yeah, that happens.<br><br>So we dug even deeper, and we found this for you instead...</p>\n<p><b>BIGGER_DISCOUNT_CODE</b></p>\n<p>Seriously, this is as good as it gets.  We pulled out all the stops just for you.</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"https://www.gravitykit.com/\" style=\"display:inline-block;background:#388E3C;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Shop Now</a></p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "90-days-after-last-order",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

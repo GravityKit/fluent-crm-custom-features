@@ -1,0 +1,212 @@
+{
+ "title": "Recapture: From Jilt",
+ "trigger_name": "fc_ab_cart_simulation_edd",
+ "status": "draft",
+ "conditions": {
+  "cart_conditions": [
+   []
+  ],
+  "active_once": "no",
+  "require_subscribed": "no"
+ },
+ "settings": {
+  "priority": 5
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (abandoned carts). Recapture IDs: 634979c2aa32410033e39b24, 6202f4ec97bc9a0028d51d4c, 6215065d0937080027423a8b."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 15 minutes",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "15",
+    "wait_time_unit": "minutes",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "[From Jilt] Complete your purchase; your website will thank you! [COPY]",
+   "description": "Complete your purchase; your website will thank you!",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "[From Jilt] Complete your purchase; your website will thank you! [COPY]",
+     "email_subject": "Complete your purchase; your website will thank you!",
+     "email_pre_header": "",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Hey {{contact.first_name|there}},</h2>\n<p>Your still have {{ab_cart_edd.first_product_name}} in your cart!</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#4D9BBE;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Complete your purchase now</a></p>\n<p>We are proud of our simple <b>30-day money-back guarantee.</b> If you need any assistance, please reply. Our dedicated customer suppor team will be there to help!</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "from-jilt-complete-your-purchase-your-website-will-thank-you-copy",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": 3,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 5 minutes",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "5",
+    "wait_time_unit": "minutes",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 4,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "[From Jilt] Complete your purchase; your website will thank you!",
+   "description": "Complete your purchase; your website will thank you!",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "[From Jilt] Complete your purchase; your website will thank you!",
+     "email_subject": "Complete your purchase; your website will thank you!",
+     "email_pre_header": "",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Hey {{contact.first_name|there}},</h2>\n<p>Your have extremely useful Gravity Forms add-ons in your cart, waiting for your return!</p>\n{{ab_cart_edd.cart_items_table}}\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#4D9BBE;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Complete your purchase now</a></p>\n<p><i>PS - We have a 30-day money-back guarantee, so you can complete checkout now, and have plenty of time to change your mind later. 🙂</i></p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "from-jilt-complete-your-purchase-your-website-will-thank-you",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": 5,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 4300 minutes",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "4300",
+    "wait_time_unit": "minutes",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 6,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "[From Jilt] Don't forget!",
+   "description": "Don't forget!",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "[From Jilt] Don't forget!",
+     "email_subject": "Don't forget!",
+     "email_pre_header": "We saved your cart!",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Thank you for your recent visit!</h2>\n<p>Thanks for your recent visit to our site. We noticed you were getting ready to check out but never completed the process. That's ok, these things happen!<br><br>We've saved your cart here for your convenience. When you're ready to finish checkout, click the button below 👇</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#f7751f;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Complete your order</a></p>\n<p>Have any questions or experience issues checking out? <b>Just reply to this email!</b></p><p><br></p><p><b>☎️ Do you prefer to speak on the phone or Zoom?</b> <a href=\"https://calendly.com/zackkatz/consultation\" target=\"_blank\" rel=\"noopener noreferrer\">Click here to schedule a call with me</a>. I'm happy to answer any quesitons you have.</p><p><br></p><p>Thanks!</p><p>Zack, founder of GravityView</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "from-jilt-don-t-forget",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

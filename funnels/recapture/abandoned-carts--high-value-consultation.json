@@ -1,0 +1,93 @@
+{
+ "title": "Recapture: High-value consultation",
+ "trigger_name": "fc_ab_cart_simulation_edd",
+ "status": "draft",
+ "conditions": {
+  "cart_conditions": [
+   [
+    {
+     "source": [
+      "ab_cart_edd",
+      "cart_total"
+     ],
+     "operator": ">",
+     "value": "499"
+    }
+   ]
+  ],
+  "active_once": "no",
+  "require_subscribed": "no"
+ },
+ "settings": {
+  "priority": 20
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (abandoned carts). Recapture IDs: 621fb244f78f56002755eede."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 20 minutes",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "20",
+    "wait_time_unit": "minutes",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "High-value consultation",
+   "description": "Are you unsure about GravityView?",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "High-value consultation",
+     "email_subject": "Are you unsure about GravityView?",
+     "email_pre_header": "",
+     "email_body": "<div><br></div><div><p>Hi {{contact.first_name|there}},</p></div><p>My name is Zack and I’m the founder of GravityKit. I would love the opportunity to discuss with you whether GravityKit plugins are the right fit for your project. <b>Your success is my priority.</b></p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"https://calendly.com/zackkatz/consultation\" style=\"display:inline-block;background:#f7751f;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Schedule a call</a></p>\n<div><div>In our 20 minute consultation call, I will listen to what your goals are and we will discuss how best to achieve them.</div><p><br></p><div>As a business owner with over 15 years of experience doing website design and development, I am ready to assist you as best I can.</div></div><p><br></p><div>I look forward to our consultation. Please reply to this email with any questions you might have.</div><p><br></p><p>Thanks,</p><div>Zack Katz</div><div><br></div>\n<div class=\"\">PS - You have our suite of useful Gravity Forms add-ons in your cart! If you would like to continue checking out, click the link below:</div>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#ffffff;color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Complete your purchase now</a></p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "high-value-consultation",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}
