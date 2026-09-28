@@ -77,13 +77,15 @@ class DiscountSettingsPage {
 		$profiles = [];
 
 		foreach ( $rows as $key => $row ) {
-			$row  = (array) $row;
-			$slug = '__new' === $key ? sanitize_key( (string) ( $row['slug'] ?? '' ) ) : sanitize_key( (string) $key );
+			$row   = (array) $row;
+			$typed = is_scalar( $row['slug'] ?? '' ) ? (string) ( $row['slug'] ?? '' ) : '';
+			$slug  = sanitize_key( '__new' === $key ? $typed : (string) $key );
 
-			$is_blank_new = '' === $slug;
-			$is_deleted   = ! empty( $row['delete'] ) && EddRecoveryDiscount::DEFAULT_PROFILE !== $slug;
+			// `__new` names the blank row itself, so it cannot be a profile's slug.
+			$is_unusable = '' === $slug || '__new' === $slug;
+			$is_deleted  = ! empty( $row['delete'] ) && EddRecoveryDiscount::DEFAULT_PROFILE !== $slug;
 
-			if ( $is_blank_new || $is_deleted || isset( $profiles[ $slug ] ) ) {
+			if ( $is_unusable || $is_deleted || isset( $profiles[ $slug ] ) ) {
 				continue;
 			}
 
@@ -166,7 +168,8 @@ class DiscountSettingsPage {
 	/**
 	 * One profile row; `__new` renders the blank row for adding a profile.
 	 *
-	 * @param array<string,mixed> $profile
+	 * @param string              $slug    Profile slug, or `__new`.
+	 * @param array<string,mixed> $profile Saved values; empty for the blank row.
 	 */
 	private function renderRow( string $slug, array $profile ): void {
 		$is_new     = '__new' === $slug;

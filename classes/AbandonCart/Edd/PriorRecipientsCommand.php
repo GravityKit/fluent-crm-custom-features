@@ -17,7 +17,7 @@ class PriorRecipientsCommand {
 	 * <file>
 	 * : Path to the CSV.
 	 *
-	 * @param string[] $args
+	 * @param string[] $args Positional arguments: the CSV path.
 	 */
 	public function import( $args ): void {
 		try {

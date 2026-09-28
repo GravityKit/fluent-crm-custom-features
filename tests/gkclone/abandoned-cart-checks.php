@@ -443,6 +443,32 @@ try {
 		$_REQUEST = [];
 		wp_set_current_user( $previous_user );
 	}
+	// The page's own permission check, without the site's wp-admin redirect in front of it.
+	$subscriber_id = wp_insert_user( [ 'user_login' => 't402-subscriber', 'user_email' => t402_email( 'subscriber' ), 'user_pass' => wp_generate_uuid4(), 'role' => 'subscriber' ] );
+	wp_set_current_user( (int) $subscriber_id );
+	$_POST    = [ '_wpnonce' => wp_create_nonce( 'customcrm_cart_discounts_save' ), 'profiles' => [ 'default' => [ 'amount' => '1' ] ] ];
+	$_REQUEST = $_POST;
+	$died     = null;
+	$die_handler = function () {
+		return function ( $message, $title, $args ) {
+			throw new RuntimeException( 'wp_die:' . ( $args['response'] ?? '' ) );
+		};
+	};
+	add_filter( 'wp_die_handler', $die_handler );
+	try {
+		$page->handleSave();
+	} catch ( RuntimeException $e ) {
+		$died = $e->getMessage();
+	} finally {
+		remove_filter( 'wp_die_handler', $die_handler );
+		$_POST    = [];
+		$_REQUEST = [];
+		wp_set_current_user( $previous_user );
+		require_once ABSPATH . 'wp-admin/includes/user.php';
+		wp_delete_user( (int) $subscriber_id );
+	}
+	t402_check( 'subscriber with a valid nonce is refused with 403', 'wp_die:403' === $died, $died );
+
 	$saved = ( new \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount() )->getProfiles();
 	t402_check(
 		'saving: default kept and edited, pct20 deleted, new profile added',

@@ -13,6 +13,7 @@ class PriorRecipients {
 	/**
 	 * When this email last got a cart email from the previous system.
 	 *
+	 * @param string $email Shopper email, any case.
 	 * @return int Unix time; 0 when not on the list.
 	 */
 	public static function lastSentAt( string $email ): int {
@@ -24,13 +25,15 @@ class PriorRecipients {
 	/**
 	 * Replaces the list from a CSV with `email` and `last_sent_at` columns (ISO 8601 or Unix time, UTC).
 	 *
+	 * @param string $csv_path Path to the CSV.
 	 * @return int Rows stored.
+	 * @throws \RuntimeException When the file cannot be read, lacks the columns, or the list cannot be saved.
 	 */
 	public static function import( string $csv_path ): int {
 		$handle = fopen( $csv_path, 'r' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 
 		if ( ! $handle ) {
-			throw new \RuntimeException( 'Cannot read ' . $csv_path );
+			throw new \RuntimeException( 'Cannot read the CSV file.' );
 		}
 
 		$header = array_map( 'strtolower', array_map( 'trim', (array) fgetcsv( $handle ) ) );
@@ -44,7 +47,13 @@ class PriorRecipients {
 
 		$list = [];
 
-		while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+		while ( true ) {
+			$row = fgetcsv( $handle );
+
+			if ( false === $row ) {
+				break;
+			}
+
 			$address = trim( (string) ( $row[ $email ] ?? '' ) );
 			$value   = trim( (string) ( $row[ $sent ] ?? '' ) );
 			$time    = ctype_digit( $value ) ? (int) $value : (int) strtotime( $value );
@@ -71,6 +80,8 @@ class PriorRecipients {
 
 	/**
 	 * Keyed with the site's salt, so the stored list cannot be checked against guessed addresses.
+	 *
+	 * @param string $email Shopper email, any case.
 	 */
 	private static function key( string $email ): string {
 		return hash_hmac( 'sha256', strtolower( trim( $email ) ), wp_salt( 'auth' ) );

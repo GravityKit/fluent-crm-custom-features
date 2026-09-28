@@ -41,7 +41,7 @@ class CollisionGate {
 	/**
 	 * Cancels due campaign emails for every contact in a cart automation. Returns the filter value unchanged.
 	 *
-	 * @param bool $disabled
+	 * @param bool $disabled Whether FluentCRM email processing is switched off.
 	 * @return bool
 	 */
 	public static function beforeBatchSend( $disabled ) {
@@ -66,7 +66,7 @@ class CollisionGate {
 	/**
 	 * Applies both rules to one contact before FluentCRM sends their due emails.
 	 *
-	 * @param \FluentCrm\App\Models\Subscriber $subscriber
+	 * @param \FluentCrm\App\Models\Subscriber $subscriber Contact whose emails are about to send.
 	 */
 	public static function beforeContactSend( $subscriber ): void {
 		$contact_id = is_object( $subscriber ) ? (int) $subscriber->id : 0;
@@ -111,7 +111,7 @@ class CollisionGate {
 	/**
 	 * Cancels these contacts' campaign emails that are due now. Automation emails are untouched.
 	 *
-	 * @param int[] $contact_ids
+	 * @param int[] $contact_ids FluentCRM contact IDs.
 	 */
 	private static function cancelCampaignEmails( array $contact_ids ): void {
 		if ( ! $contact_ids ) {
@@ -137,6 +137,8 @@ class CollisionGate {
 
 	/**
 	 * Moves this contact's due onboarding emails to 24 hours after their last cart or pre-renewal email.
+	 *
+	 * @param int $contact_id FluentCRM contact ID.
 	 */
 	private static function holdLowPriorityEmails( int $contact_id ): void {
 		$now   = current_time( 'mysql' );
@@ -216,7 +218,7 @@ class CollisionGate {
 	/**
 	 * Cart, renewal-cart and pre-renewal automations: never held, and they hold the others.
 	 *
-	 * @param Funnel $automation
+	 * @param Funnel $automation The automation an email came from.
 	 */
 	private static function isPriorityAutomation( $automation ): bool {
 		$is_priority = in_array( $automation->trigger_name, self::CART_TRIGGERS, true )
@@ -228,7 +230,7 @@ class CollisionGate {
 	/**
 	 * Onboarding and activation reminders: the automations whose emails can wait a day.
 	 *
-	 * @param Funnel $automation
+	 * @param Funnel $automation The automation an email came from.
 	 */
 	private static function isHoldableAutomation( $automation ): bool {
 		$is_holdable = 1 === preg_match( '/^(Onboarding|Activation reminder)/i', (string) $automation->title );

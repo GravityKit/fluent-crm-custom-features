@@ -294,17 +294,29 @@ class EddCartTracking {
 	public function ajaxSync(): void {
 		check_ajax_referer( self::NONCE, 'nonce' );
 
-		$email = sanitize_email( wp_unslash( $_POST['email'] ?? '' ) );
+		$email = sanitize_email( self::postedText( 'email' ) );
 
 		if ( ! is_email( $email ) ) {
 			wp_send_json_error( [ 'message' => 'invalid_email' ], 400 );
 		}
 
-		$full_name = trim( sanitize_text_field( wp_unslash( $_POST['first_name'] ?? '' ) ) . ' ' . sanitize_text_field( wp_unslash( $_POST['last_name'] ?? '' ) ) );
+		$first     = sanitize_text_field( self::postedText( 'first_name' ) );
+		$last      = sanitize_text_field( self::postedText( 'last_name' ) );
+		$full_name = trim( $first . ' ' . $last );
 
 		$record = $this->syncCart( $email, $full_name );
 
 		wp_send_json_success( [ 'tracked' => (bool) $record ] );
+	}
+
+	/**
+	 * A posted field as unslashed text; empty when missing or not a string (a crafted request).
+	 */
+	private static function postedText( string $key ): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- the caller verified the nonce.
+		$value = $_POST[ $key ] ?? '';
+
+		return is_scalar( $value ) ? (string) wp_unslash( $value ) : '';
 	}
 
 	/**
@@ -320,7 +332,7 @@ class EddCartTracking {
 		}
 
 		$days = (int) apply_filters( 'fluent_crm/ab_cart_opt_out_cookie_validity', 7 );
-		setcookie( self::OPT_OUT, 'yes', time() + ( DAY_IN_SECONDS * $days ), COOKIEPATH, COOKIE_DOMAIN );
+		setcookie( self::OPT_OUT, 'yes', time() + ( DAY_IN_SECONDS * $days ), COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
 
 		wp_send_json_success( [ 'message' => __( 'You have opted out from cart tracking', 'fluent-crm-custom-features' ) ] );
 	}

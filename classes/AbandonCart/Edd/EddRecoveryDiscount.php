@@ -23,12 +23,54 @@ class EddRecoveryDiscount {
 	 * Recapture's unique-code discounts; its "40% Off (expires after 2 days)" became 3 days.
 	 */
 	private const STARTING_PROFILES = [
-		self::DEFAULT_PROFILE => [ 'label' => 'Default recovery discount', 'type' => 'percent', 'amount' => 40, 'expiry_hours' => 48, 'min_amount' => 0, 'prefix' => 'CART' ],
-		'pct40_3d'            => [ 'label' => '40% off, expires after 3 days', 'type' => 'percent', 'amount' => 40, 'expiry_hours' => 72, 'min_amount' => 1, 'prefix' => 'CART' ],
-		'pct40_7d'            => [ 'label' => '40% off, expires after 7 days', 'type' => 'percent', 'amount' => 40, 'expiry_hours' => 168, 'min_amount' => 1, 'prefix' => 'CART' ],
-		'pct20'               => [ 'label' => '20% off', 'type' => 'percent', 'amount' => 20, 'expiry_hours' => 0, 'min_amount' => 0, 'prefix' => 'CART' ],
-		'pct10_1d'            => [ 'label' => '10% off, expires after 1 day', 'type' => 'percent', 'amount' => 10, 'expiry_hours' => 24, 'min_amount' => 0, 'prefix' => 'CART' ],
-		'usd20'               => [ 'label' => '$20 off', 'type' => 'flat', 'amount' => 20, 'expiry_hours' => 0, 'min_amount' => 0, 'prefix' => 'CART' ],
+		self::DEFAULT_PROFILE => [
+			'label'        => 'Default recovery discount',
+			'type'         => 'percent',
+			'amount'       => 40,
+			'expiry_hours' => 48,
+			'min_amount'   => 0,
+			'prefix'       => 'CART',
+		],
+		'pct40_3d'            => [
+			'label'        => '40% off, expires after 3 days',
+			'type'         => 'percent',
+			'amount'       => 40,
+			'expiry_hours' => 72,
+			'min_amount'   => 1,
+			'prefix'       => 'CART',
+		],
+		'pct40_7d'            => [
+			'label'        => '40% off, expires after 7 days',
+			'type'         => 'percent',
+			'amount'       => 40,
+			'expiry_hours' => 168,
+			'min_amount'   => 1,
+			'prefix'       => 'CART',
+		],
+		'pct20'               => [
+			'label'        => '20% off',
+			'type'         => 'percent',
+			'amount'       => 20,
+			'expiry_hours' => 0,
+			'min_amount'   => 0,
+			'prefix'       => 'CART',
+		],
+		'pct10_1d'            => [
+			'label'        => '10% off, expires after 1 day',
+			'type'         => 'percent',
+			'amount'       => 10,
+			'expiry_hours' => 24,
+			'min_amount'   => 0,
+			'prefix'       => 'CART',
+		],
+		'usd20'               => [
+			'label'        => '$20 off',
+			'type'         => 'flat',
+			'amount'       => 20,
+			'expiry_hours' => 0,
+			'min_amount'   => 0,
+			'prefix'       => 'CART',
+		],
 	];
 
 	/**
@@ -99,20 +141,44 @@ class EddRecoveryDiscount {
 	}
 
 	/**
-	 * @param array<string,mixed> $profile
+	 * One profile with every field present, cleaned and within range.
+	 *
+	 * @param string              $slug    Profile slug; the label when none is given.
+	 * @param array<string,mixed> $profile Raw values from the option, a filter, or the settings form.
 	 * @return array{label: string, type: string, amount: float, expiry_hours: int, min_amount: float, prefix: string}
 	 */
 	private static function normalizeProfile( string $slug, array $profile ): array {
-		$prefix = preg_replace( '/[^A-Z0-9]/', '', strtoupper( (string) Arr::get( $profile, 'prefix', 'CART' ) ) );
+		$type   = 'flat' === self::field( $profile, 'type' ) ? 'flat' : 'percent';
+		$amount = max( 0, (float) self::field( $profile, 'amount', '0' ) );
+		$label  = sanitize_text_field( self::field( $profile, 'label', $slug ) );
+		$prefix = preg_replace( '/[^A-Z0-9]/', '', strtoupper( self::field( $profile, 'prefix', 'CART' ) ) );
+
+		// Anything over 100% would make EDD price the order at zero or below.
+		if ( 'percent' === $type ) {
+			$amount = min( 100, $amount );
+		}
 
 		return [
-			'label'        => sanitize_text_field( (string) Arr::get( $profile, 'label', $slug ) ),
-			'type'         => 'flat' === Arr::get( $profile, 'type' ) ? 'flat' : 'percent',
-			'amount'       => max( 0, (float) Arr::get( $profile, 'amount', 0 ) ),
-			'expiry_hours' => max( 0, (int) Arr::get( $profile, 'expiry_hours', 0 ) ),
-			'min_amount'   => max( 0, (float) Arr::get( $profile, 'min_amount', 0 ) ),
+			'label'        => '' === $label ? $slug : $label,
+			'type'         => $type,
+			'amount'       => $amount,
+			'expiry_hours' => max( 0, (int) self::field( $profile, 'expiry_hours', '0' ) ),
+			'min_amount'   => max( 0, (float) self::field( $profile, 'min_amount', '0' ) ),
 			'prefix'       => $prefix ?: 'CART',
 		];
+	}
+
+	/**
+	 * A profile field as a string; a missing or non-scalar value (a crafted form field) is the fallback.
+	 *
+	 * @param array<string,mixed> $profile  Raw profile values.
+	 * @param string              $key      Field name.
+	 * @param string              $fallback Value when the field is missing or not scalar.
+	 */
+	private static function field( array $profile, string $key, string $fallback = '' ): string {
+		$value = $profile[ $key ] ?? $fallback;
+
+		return is_scalar( $value ) ? (string) $value : $fallback;
 	}
 
 	/**
@@ -146,6 +212,8 @@ class EddRecoveryDiscount {
 
 	/**
 	 * A flat amount in the store's currency format.
+	 *
+	 * @param float $amount Amount in the store currency.
 	 */
 	private function formatFlatAmount( float $amount ): string {
 		if ( ! function_exists( 'edd_currency_filter' ) ) {
@@ -160,6 +228,8 @@ class EddRecoveryDiscount {
 
 	/**
 	 * The amount without trailing zeros: 40.00 is "40", 12.50 is "12.5".
+	 *
+	 * @param float $amount Amount to print.
 	 */
 	private function trimDecimals( float $amount ): string {
 		$fixed = number_format( $amount, 2, '.', '' );
@@ -172,6 +242,8 @@ class EddRecoveryDiscount {
 	 *
 	 * Email previews get a placeholder, so opening the editor never writes a discount to the store.
 	 *
+	 * @param AbandonCartModel $cart    The cart the code belongs to.
+	 * @param string           $profile Profile slug.
 	 * @return array{code: string, expires: int, discount_id: int}|null Expiry is a Unix timestamp
 	 *         (UTC), 0 when the code never expires. Null for an unknown profile.
 	 */
@@ -251,6 +323,7 @@ class EddRecoveryDiscount {
 	/**
 	 * Codes already issued to this cart, newest first.
 	 *
+	 * @param AbandonCartModel $cart The cart.
 	 * @return string[]
 	 */
 	public function getIssuedCodes( AbandonCartModel $cart ): array {
@@ -269,6 +342,10 @@ class EddRecoveryDiscount {
 	}
 
 	/**
+	 * The code already issued to this cart for a profile.
+	 *
+	 * @param AbandonCartModel $cart    The cart.
+	 * @param string           $profile Profile slug.
 	 * @return array{code: string, expires: int, discount_id: int}|null
 	 */
 	private function getStored( AbandonCartModel $cart, string $profile ): ?array {
