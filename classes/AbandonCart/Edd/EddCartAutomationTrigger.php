@@ -15,6 +15,9 @@ class EddCartAutomationTrigger extends FluentCartAutomationTrigger {
 
 	protected const PROVIDER = EddCartDriver::PROVIDER;
 
+	/**
+	 * Registers the trigger under this provider's name.
+	 */
 	public function __construct() {
 		$this->triggerName  = 'fc_ab_cart_simulation_' . static::PROVIDER;
 		$this->priority     = 99;
@@ -24,6 +27,11 @@ class EddCartAutomationTrigger extends FluentCartAutomationTrigger {
 		\FluentCrm\App\Services\Funnel\BaseTrigger::__construct();
 	}
 
+	/**
+	 * The trigger as the automation editor lists it.
+	 *
+	 * @return array<string,mixed>
+	 */
 	public function getTrigger() {
 		$trigger = parent::getTrigger();
 
@@ -36,6 +44,12 @@ class EddCartAutomationTrigger extends FluentCartAutomationTrigger {
 		return $trigger;
 	}
 
+	/**
+	 * Trigger settings fields, titled for this provider.
+	 *
+	 * @param \FluentCrm\App\Models\Funnel $funnel
+	 * @return array<string,mixed>
+	 */
 	public function getSettingsFields( $funnel ) {
 		$fields = parent::getSettingsFields( $funnel );
 
@@ -45,14 +59,26 @@ class EddCartAutomationTrigger extends FluentCartAutomationTrigger {
 		return $fields;
 	}
 
+	/**
+	 * Trigger name shown in the automation editor.
+	 */
 	protected function getLabel(): string {
 		return __( 'Cart Abandoned - Easy Digital Downloads', 'fluent-crm-custom-features' );
 	}
 
+	/**
+	 * Trigger description shown in the automation editor.
+	 */
 	protected function getDescription(): string {
 		return __( 'This Funnel will be initiated when a cart has been abandoned in Easy Digital Downloads', 'fluent-crm-custom-features' );
 	}
 
+	/**
+	 * Condition groups, with the cart group keyed and populated for EDD products and categories.
+	 *
+	 * @param \FluentCrm\App\Models\Funnel $funnel
+	 * @return array<int,array<string,mixed>>
+	 */
 	public function getConditionGroups( $funnel ) {
 		$groups = parent::getConditionGroups( $funnel );
 		$group  = 'ab_cart_' . static::PROVIDER;

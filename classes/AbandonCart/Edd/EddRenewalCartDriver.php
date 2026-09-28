@@ -13,18 +13,38 @@ class EddRenewalCartDriver extends EddCartDriver {
 
 	public const PROVIDER = 'edd_renewal';
 
+	/**
+	 * Provider key stored in `fc_abandoned_carts.provider`.
+	 *
+	 * @return string
+	 */
 	public function getProviderSlug() {
 		return self::PROVIDER;
 	}
 
+	/**
+	 * Provider name shown in FluentCRM settings and reports.
+	 *
+	 * @return string
+	 */
 	public function getProviderLabel() {
 		return __( 'Easy Digital Downloads (license renewals)', 'fluent-crm-custom-features' );
 	}
 
+	/**
+	 * Whether EDD and EDD Software Licensing are active.
+	 *
+	 * @return bool
+	 */
 	public function isAvailable() {
 		return parent::isAvailable() && function_exists( 'edd_software_licensing' );
 	}
 
+	/**
+	 * Registers the renewal automation trigger.
+	 *
+	 * @return void
+	 */
 	public function registerAutomationTrigger() {
 		new EddRenewalCartAutomationTrigger();
 	}

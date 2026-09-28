@@ -77,6 +77,12 @@ class EddRecoveryDiscount {
 		return $this->getProfiles()[ self::DEFAULT_PROFILE ];
 	}
 
+	/**
+	 * The profile's discount as shoppers read it.
+	 *
+	 * @param string $profile Profile slug.
+	 * @return string "40%" or a formatted flat amount; empty for an unknown profile.
+	 */
 	public function getAmountLabel( string $profile = self::DEFAULT_PROFILE ): string {
 		$settings = $this->getProfiles()[ $profile ] ?? null;
 
@@ -203,6 +209,11 @@ class EddRecoveryDiscount {
 		return is_array( $stored ) && ! empty( $stored['code'] ) ? $stored : null;
 	}
 
+	/**
+	 * A discount code not already in EDD.
+	 *
+	 * @param string $prefix Uppercase letters and digits.
+	 */
 	private function uniqueCode( string $prefix ): string {
 		do {
 			// Not wp_generate_password(): plugins can filter its output through `random_password`.

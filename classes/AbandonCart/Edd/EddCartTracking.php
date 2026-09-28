@@ -54,6 +54,9 @@ class EddCartTracking {
 	 */
 	private static $restoring = false;
 
+	/**
+	 * @param EddCartDriver $driver The provider this instance serves.
+	 */
 	public function __construct( EddCartDriver $driver ) {
 		$this->driver = $driver;
 	}
@@ -141,6 +144,11 @@ class EddCartTracking {
 		);
 	}
 
+	/**
+	 * Runs closeRenewedCarts() once at shutdown, after the request's orders are complete.
+	 *
+	 * @param callable $call Wraps a method name in a callback on the enabled instance.
+	 */
 	private static function scheduleRenewalClose( callable $call ): void {
 		static $scheduled = false;
 
@@ -184,6 +192,11 @@ class EddCartTracking {
 		update_option( self::INDEX_OPTION, 1, false );
 	}
 
+	/**
+	 * The shared instance the cart and order hooks run on.
+	 *
+	 * @return self|null Null when abandoned carts or both EDD providers are off.
+	 */
 	private static function instanceIfEnabled(): ?self {
 		static $instance = null;
 
@@ -195,6 +208,11 @@ class EddCartTracking {
 		return $instance ?: null;
 	}
 
+	/**
+	 * Whether a provider is switched on in FluentCRM's abandoned-cart settings.
+	 *
+	 * @param string $provider Provider key.
+	 */
 	private static function isProviderEnabled( string $provider ): bool {
 		if ( EddRenewalCartDriver::PROVIDER === $provider && ! function_exists( 'edd_software_licensing' ) ) {
 			return false;
@@ -210,6 +228,9 @@ class EddCartTracking {
 		return EddRenewalCartDriver::PROVIDER === $provider ? new EddRenewalCartDriver() : new EddCartDriver();
 	}
 
+	/**
+	 * Loads the script that sends the checkout email and name as they are typed.
+	 */
 	public function enqueueCheckoutScript(): void {
 		if ( ! function_exists( 'edd_is_checkout' ) || ! edd_is_checkout() || ! AbCartHelper::willCartTrack() ) {
 			return;
@@ -220,18 +241,18 @@ class EddCartTracking {
 		}
 
 		$plugin_file = dirname( __DIR__, 3 ) . '/fluent-crm-custom-features.php';
-		$script_path = dirname( __DIR__, 3 ) . '/assets/edd-abandoned-cart.js';
+		$script_path = dirname( __DIR__, 3 ) . '/assets/checkout-fields.js';
 
 		wp_enqueue_script(
-			'customcrm-edd-abandoned-cart',
-			plugins_url( 'assets/edd-abandoned-cart.js', $plugin_file ),
+			'customcrm-checkout-fields',
+			plugins_url( 'assets/checkout-fields.js', $plugin_file ),
 			[],
 			(string) filemtime( $script_path ),
 			true
 		);
 
 		wp_localize_script(
-			'customcrm-edd-abandoned-cart',
+			'customcrm-checkout-fields',
 			'customcrmEddAbCart',
 			[
 				'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
@@ -243,6 +264,9 @@ class EddCartTracking {
 		);
 	}
 
+	/**
+	 * AJAX: saves the current cart for the email typed at checkout.
+	 */
 	public function ajaxSync(): void {
 		check_ajax_referer( self::NONCE, 'nonce' );
 
@@ -259,6 +283,9 @@ class EddCartTracking {
 		wp_send_json_success( [ 'tracked' => (bool) $record ] );
 	}
 
+	/**
+	 * AJAX: stops tracking this visitor's cart for the opt-out cookie's lifetime.
+	 */
 	public function ajaxOptOut(): void {
 		check_ajax_referer( self::NONCE, 'nonce' );
 
@@ -618,6 +645,12 @@ class EddCartTracking {
 		return $latest;
 	}
 
+	/**
+	 * Cancels the automation run started by this cart.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @param string           $note Shown on the run in FluentCRM.
+	 */
 	private function cancelCartAutomation( AbandonCartModel $cart, string $note ): void {
 		FunnelSubscriber::where( 'source_ref_id', $cart->id )
 			->where( 'source_trigger_name', self::driverFor( (string) $cart->provider )->getTriggerName() )
@@ -630,6 +663,13 @@ class EddCartTracking {
 			);
 	}
 
+	/**
+	 * Deletes the buyer's other open new-purchase carts.
+	 *
+	 * @param int    $keep_id Cart to keep; 0 for none.
+	 * @param string $email
+	 * @param int    $user_id 0 for a guest.
+	 */
 	private function deleteOtherCarts( int $keep_id, string $email, int $user_id ): void {
 		$carts = AbandonCartModel::where( 'provider', EddCartDriver::PROVIDER )
 			->where( 'id', '!=', $keep_id )
@@ -649,6 +689,13 @@ class EddCartTracking {
 		}
 	}
 
+	/**
+	 * Cancels the buyer's running new-purchase cart automations.
+	 *
+	 * @param string $email
+	 * @param int    $user_id 0 for a guest.
+	 * @param string $note    Shown on the run in FluentCRM.
+	 */
 	private function cancelAutomations( string $email, int $user_id, string $note ): void {
 		$subscriber_ids = Subscriber::where( 'email', $email )
 			->when(
@@ -894,6 +941,14 @@ class EddCartTracking {
 		}
 	}
 
+	/**
+	 * Value of a `discount.<profile>.<field>` smart code, creating the code on first use.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @param string           $profile       Discount profile slug.
+	 * @param string           $field         `code`, `amount` or `expires`.
+	 * @param string           $default_value Returned when there is no value.
+	 */
 	private function discountValue( AbandonCartModel $cart, string $profile, string $field, string $default_value ): string {
 		$discounts = new EddRecoveryDiscount();
 
@@ -1017,10 +1072,19 @@ class EddCartTracking {
 		return false;
 	}
 
+	/**
+	 * Whether this visitor has the cart-tracking opt-out cookie.
+	 */
 	private function hasOptedOut(): bool {
 		return 'yes' === sanitize_text_field( wp_unslash( $_COOKIE[ self::OPT_OUT ] ?? '' ) );
 	}
 
+	/**
+	 * Sets the cart token cookie, and `$_COOKIE` for the rest of this request.
+	 *
+	 * @param string $value Checkout key; empty with a negative `$days` to clear it.
+	 * @param int    $days  0 for the `fluent_crm/ab_cart_cookie_validity` default.
+	 */
 	private function setCookie( string $value, int $days = 0 ): void {
 		if ( headers_sent() ) {
 			return;

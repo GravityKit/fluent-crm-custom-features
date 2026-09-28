@@ -27,27 +27,57 @@ class EddCartDriver extends AbstractCartDriver {
 	 */
 	private const RESEND_CAP_DAYS = 21;
 
+	/**
+	 * Provider key stored in `fc_abandoned_carts.provider`.
+	 *
+	 * @return string
+	 */
 	public function getProviderSlug() {
 		return self::PROVIDER;
 	}
 
+	/**
+	 * Provider name shown in FluentCRM settings and reports.
+	 *
+	 * @return string
+	 */
 	public function getProviderLabel() {
 		return __( 'Easy Digital Downloads', 'fluent-crm-custom-features' );
 	}
 
+	/**
+	 * Whether EDD is active.
+	 *
+	 * @return bool
+	 */
 	public function isAvailable() {
 		return function_exists( 'EDD' ) && function_exists( 'edd_get_cart_contents' );
 	}
 
+	/**
+	 * Hooks the checkout script, AJAX endpoints, cart restore and smart codes for this provider.
+	 *
+	 * @return void
+	 */
 	public function register() {
 		( new EddCartTracking( $this ) )->register();
 	}
 
+	/**
+	 * Registers this provider's automation trigger.
+	 *
+	 * @return void
+	 */
 	public function registerAutomationTrigger() {
 		// BaseTrigger registers its own hooks in the constructor.
 		new EddCartAutomationTrigger();
 	}
 
+	/**
+	 * Directory holding this driver's email templates.
+	 *
+	 * @return string
+	 */
 	protected function getViewsBasePath() {
 		return __DIR__ . '/Views/';
 	}
@@ -66,6 +96,11 @@ class EddCartDriver extends AbstractCartDriver {
 		return $this->boughtRecently( $cart ) || $this->sentRecently( $cart );
 	}
 
+	/**
+	 * Whether the shopper completed an order within FluentCRM's cool-off days.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
 	protected function boughtRecently( AbandonCartModel $cart ): bool {
 		$cool_off_days = (int) AbCartHelper::getSetting( 'cool_off_period_days', 0 );
 
@@ -92,6 +127,11 @@ class EddCartDriver extends AbstractCartDriver {
 		return false;
 	}
 
+	/**
+	 * Whether this contact entered this provider's automation within the resend cap.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
 	protected function sentRecently( AbandonCartModel $cart ): bool {
 		$cap_days = (int) apply_filters( 'customcrm/edd_ab_cart/resend_cap_days', self::RESEND_CAP_DAYS, $cart );
 
@@ -120,6 +160,12 @@ class EddCartDriver extends AbstractCartDriver {
 			->exists();
 	}
 
+	/**
+	 * Cart items table for the `cart_items_table` smart code.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @return string HTML.
+	 */
 	public function getCartItemsHtml( AbandonCartModel $cart ) {
 		return $this->loadView(
 			'AbandonCartItems',
@@ -131,6 +177,13 @@ class EddCartDriver extends AbstractCartDriver {
 		);
 	}
 
+	/**
+	 * Formats an amount in the store's currency style.
+	 *
+	 * @param float|string $amount
+	 * @param string       $currency Currency code; empty for the store currency.
+	 * @return string
+	 */
 	public function formatPrice( $amount, $currency = '' ) {
 		if ( ! function_exists( 'edd_currency_filter' ) ) {
 			return '$' . number_format( (float) $amount, 2 );
@@ -139,6 +192,12 @@ class EddCartDriver extends AbstractCartDriver {
 		return edd_currency_filter( edd_format_amount( (float) $amount ), $currency ?: edd_get_currency() );
 	}
 
+	/**
+	 * Link that rebuilds the cart and opens checkout.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @return string Empty unless the cart's sequence is running.
+	 */
 	public function getRecoveryUrl( AbandonCartModel $cart ) {
 		if ( 'processing' !== $cart->status ) {
 			return '';
@@ -155,6 +214,12 @@ class EddCartDriver extends AbstractCartDriver {
 		);
 	}
 
+	/**
+	 * Product and category IDs the automation's cart conditions match against.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @return array{product_ids: int[], category_ids: int[]}
+	 */
 	public function extractCartConditionData( AbandonCartModel $cart ) {
 		$product_ids = array_values(
 			array_unique(
@@ -185,6 +250,12 @@ class EddCartDriver extends AbstractCartDriver {
 		];
 	}
 
+	/**
+	 * Adds the order link and address block the Abandoned Carts report expects.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @return AbandonCartModel
+	 */
 	public function enrichCartForListing( AbandonCartModel $cart ) {
 		if ( $cart->order_id ) {
 			$cart->order_url = admin_url( 'edit.php?post_type=download&page=edd-payment-history&view=view-order-details&id=' . (int) $cart->order_id );
