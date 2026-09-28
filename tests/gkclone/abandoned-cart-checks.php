@@ -407,6 +407,55 @@ try {
 		update_option( \CustomCRM\AbandonCart\Edd\PriorRecipients::OPTION, $prior_backup, false );
 	}
 
+	// 12b. Cart Discounts page: renders for an admin, saves edits, keeps the default profile.
+	$discount_backup = get_option( \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount::OPTION, null );
+	$admin_id        = (int) ( get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] )[0] ?? 0 );
+	$previous_user   = get_current_user_id();
+	wp_set_current_user( $admin_id );
+	$page = new \CustomCRM\AbandonCart\Edd\DiscountSettingsPage();
+	ob_start();
+	$page->renderPage();
+	$html = (string) ob_get_clean();
+	t402_check( 'Cart Discounts page lists the profiles', false !== strpos( $html, 'name="profiles[pct40_3d][amount]"' ) && false !== strpos( $html, 'name="profiles[__new][slug]"' ) && false === strpos( $html, 'name="profiles[default][delete]"' ), strlen( $html ) );
+
+	$_POST    = [
+		'_wpnonce'         => wp_create_nonce( 'customcrm_cart_discounts_save' ),
+		'_wp_http_referer' => '/wp-admin/admin.php?page=fluentcrm-cart-discounts',
+		'profiles'         => [
+			'default'  => [ 'label' => 'Default', 'type' => 'percent', 'amount' => '35', 'expiry_hours' => '48', 'min_amount' => '0', 'prefix' => 'cart', 'delete' => '1' ],
+			'pct40_3d' => [ 'label' => '40% off, 3 days', 'type' => 'percent', 'amount' => '40', 'expiry_hours' => '72', 'min_amount' => '1', 'prefix' => 'CART' ],
+			'pct20'    => [ 'label' => '20% off', 'type' => 'percent', 'amount' => '20', 'expiry_hours' => '0', 'min_amount' => '0', 'prefix' => 'CART', 'delete' => '1' ],
+			'__new'    => [ 'slug' => 'Flat 15', 'label' => '$15 off', 'type' => 'flat', 'amount' => '15', 'expiry_hours' => '24', 'min_amount' => '0', 'prefix' => 'save!' ],
+		],
+	];
+	$_REQUEST = $_POST;
+	$stop     = function () { throw new RuntimeException( 't402-redirect' ); };
+	add_filter( 'wp_redirect', $stop, 1 );
+	try {
+		$page->handleSave();
+	} catch ( RuntimeException $e ) {
+		if ( 't402-redirect' !== $e->getMessage() ) {
+			throw $e;
+		}
+	} finally {
+		remove_filter( 'wp_redirect', $stop, 1 );
+		$_POST    = [];
+		$_REQUEST = [];
+		wp_set_current_user( $previous_user );
+	}
+	$saved = ( new \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount() )->getProfiles();
+	t402_check(
+		'saving: default kept and edited, pct20 deleted, new profile added',
+		35.0 === $saved['default']['amount'] && 'CART' === $saved['default']['prefix'] && ! isset( $saved['pct20'] ) && isset( $saved['flat15'] ) && 'SAVE' === $saved['flat15']['prefix'] && 'flat' === $saved['flat15']['type'],
+		array_keys( $saved )
+	);
+	t402_check( 'amount labels follow the saved profiles', '35%' === ( new \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount() )->getAmountLabel() && '$15.00' === ( new \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount() )->getAmountLabel( 'flat15' ) );
+	if ( null === $discount_backup ) {
+		delete_option( \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount::OPTION );
+	} else {
+		update_option( \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount::OPTION, $discount_backup, false );
+	}
+
 	// 13. The new-purchase automation is 3 emails, with the code on day 4.
 	$funnel_json = json_decode( (string) file_get_contents( WP_PLUGIN_DIR . '/fluent-crm-custom-features/funnels/edd-abandoned-cart.json' ), true );
 	$steps       = array_map( function ( $s ) { return $s['action_name'] . ':' . ( $s['settings']['wait_time_amount'] ?? '' ) . ( $s['settings']['wait_time_unit'] ?? '' ); }, (array) ( $funnel_json['sequences'] ?? [] ) );

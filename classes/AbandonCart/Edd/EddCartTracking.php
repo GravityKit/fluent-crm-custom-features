@@ -198,14 +198,15 @@ class EddCartTracking {
 			return;
 		}
 
-		$existing = array_map( 'strtolower', (array) $wpdb->get_col( "SHOW INDEX FROM `{$table}`", 2 ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// Schema changes have no model or core API, so these two stay as prepared SQL.
+		$existing = array_map( 'strtolower', (array) $wpdb->get_col( $wpdb->prepare( 'SHOW INDEX FROM %i', $table ), 2 ) );
 
 		foreach ( [ 'email', 'user_id' ] as $column ) {
 			if ( in_array( 'customcrm_' . $column, $existing, true ) ) {
 				continue;
 			}
 
-			$added = $wpdb->query( "ALTER TABLE `{$table}` ADD INDEX `customcrm_{$column}` (`{$column}`)" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$added = $wpdb->query( $wpdb->prepare( 'ALTER TABLE %i ADD INDEX %i (%i)', $table, 'customcrm_' . $column, $column ) );
 
 			if ( false === $added ) {
 				return;

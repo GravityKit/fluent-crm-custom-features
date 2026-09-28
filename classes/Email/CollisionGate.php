@@ -2,6 +2,11 @@
 
 namespace CustomCRM\Email;
 
+use FluentCrm\App\Models\CampaignEmail;
+use FluentCrm\App\Models\Funnel;
+use FluentCrm\App\Models\FunnelCampaign;
+use FluentCrm\App\Models\FunnelSubscriber;
+
 /**
  * Keeps FluentCRM emails from piling up on one contact.
  *
@@ -14,7 +19,10 @@ namespace CustomCRM\Email;
  */
 class CollisionGate {
 
-	private const CART_TRIGGERS = [ 'fc_ab_cart_simulation_edd', 'fc_ab_cart_simulation_edd_renewal' ];
+	private const CART_TRIGGERS = [
+		'fc_ab_cart_simulation_edd',
+		'fc_ab_cart_simulation_edd_renewal',
+	];
 
 	private const HOLD_HOURS = 24;
 
@@ -83,20 +91,21 @@ class CollisionGate {
 	 * @return int[]
 	 */
 	private static function contactsInCartAutomation( int $contact_id = 0 ): array {
-		global $wpdb;
-
-		$triggers = implode( ',', array_fill( 0, count( self::CART_TRIGGERS ), '%s' ) );
-		$sql      = "SELECT DISTINCT fs.subscriber_id FROM {$wpdb->prefix}fc_funnel_subscribers fs
-			INNER JOIN {$wpdb->prefix}fc_funnels f ON f.id = fs.funnel_id
-			WHERE fs.status = 'active' AND f.trigger_name IN ($triggers)";
-		$args     = self::CART_TRIGGERS;
+		$runs = FunnelSubscriber::where( 'status', 'active' )
+			->whereHas(
+				'funnel',
+				function ( $funnel ) {
+					$funnel->whereIn( 'trigger_name', self::CART_TRIGGERS );
+				}
+			);
 
 		if ( $contact_id ) {
-			$sql   .= ' AND fs.subscriber_id = %d';
-			$args[] = $contact_id;
+			$runs->where( 'subscriber_id', $contact_id );
 		}
 
-		return array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare( $sql, $args ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$contact_ids = array_map( 'intval', $runs->pluck( 'subscriber_id' )->toArray() );
+
+		return array_values( array_unique( $contact_ids ) );
 	}
 
 	/**
@@ -109,51 +118,59 @@ class CollisionGate {
 			return;
 		}
 
-		global $wpdb;
-
-		$ids  = implode( ',', array_map( 'intval', $contact_ids ) );
-		$note = __( 'Skipped: the contact was receiving abandoned-cart emails', 'fluent-crm-custom-features' );
-
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $ids is a list of integers.
-		$wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->prefix}fc_campaign_emails ce
-			INNER JOIN {$wpdb->prefix}fc_campaigns c ON c.id = ce.campaign_id
-			SET ce.status = 'cancelled', ce.note = %s
-			WHERE ce.subscriber_id IN ($ids) AND ce.status IN ('pending', 'scheduled')
-				AND ce.scheduled_at <= %s AND c.type = 'campaign'", $note, current_time( 'mysql' ) ) );
+		CampaignEmail::whereIn( 'subscriber_id', $contact_ids )
+			->whereIn( 'status', [ 'pending', 'scheduled' ] )
+			->where( 'scheduled_at', '<=', current_time( 'mysql' ) )
+			->whereHas(
+				'campaign',
+				function ( $campaign ) {
+					$campaign->where( 'type', 'campaign' );
+				}
+			)
+			->update(
+				[
+					'status' => 'cancelled',
+					'note'   => __( 'Skipped: the contact was receiving abandoned-cart emails', 'fluent-crm-custom-features' ),
+				]
+			);
 	}
 
 	/**
 	 * Moves this contact's due onboarding emails to 24 hours after their last cart or pre-renewal email.
 	 */
 	private static function holdLowPriorityEmails( int $contact_id ): void {
-		global $wpdb;
-
 		$now   = current_time( 'mysql' );
 		$since = gmdate( 'Y-m-d H:i:s', strtotime( $now ) - self::HOLD_HOURS * HOUR_IN_SECONDS );
 
-		// Automation emails for this contact sent or due in the last 24 hours, with the automation they came from.
-		$rows = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT ce.id, ce.status, ce.scheduled_at, f.id AS funnel_id, f.title, f.trigger_name
-				FROM {$wpdb->prefix}fc_campaign_emails ce
-				INNER JOIN {$wpdb->prefix}fc_campaigns c ON c.id = ce.campaign_id AND c.type = 'funnel_email_campaign'
-				INNER JOIN {$wpdb->prefix}fc_funnels f ON f.id = c.parent_id
-				WHERE ce.subscriber_id = %d AND ce.scheduled_at >= %s AND ce.scheduled_at <= %s
-					AND ce.status IN ('sent', 'processing', 'pending', 'scheduled')",
-				$contact_id,
-				$since,
-				$now
-			)
-		);
+		// Automation emails for this contact sent or due in the last 24 hours.
+		$emails = CampaignEmail::where( 'subscriber_id', $contact_id )
+			->where( 'email_type', 'funnel_email_campaign' )
+			->whereBetween( 'scheduled_at', [ $since, $now ] )
+			->whereIn( 'status', [ 'sent', 'processing', 'pending', 'scheduled' ] )
+			->get();
 
+		if ( $emails->isEmpty() ) {
+			return;
+		}
+
+		$automations   = self::automationsFor( $emails->pluck( 'campaign_id' )->toArray() );
 		$last_priority = '';
 		$held          = [];
 
-		foreach ( (array) $rows as $row ) {
-			if ( self::isPriorityAutomation( $row ) ) {
-				$last_priority = max( $last_priority, (string) $row->scheduled_at );
-			} elseif ( in_array( $row->status, [ 'pending', 'scheduled' ], true ) && self::isHoldableAutomation( $row ) ) {
-				$held[] = (int) $row->id;
+		foreach ( $emails as $email ) {
+			$automation = $automations[ (int) $email->campaign_id ] ?? null;
+
+			if ( ! $automation ) {
+				continue;
+			}
+
+			$scheduled_at = (string) $email->scheduled_at;
+			$is_due       = in_array( $email->status, [ 'pending', 'scheduled' ], true );
+
+			if ( self::isPriorityAutomation( $automation ) ) {
+				$last_priority = max( $last_priority, $scheduled_at );
+			} elseif ( $is_due && self::isHoldableAutomation( $automation ) ) {
+				$held[] = (int) $email->id;
 			}
 		}
 
@@ -162,16 +179,44 @@ class CollisionGate {
 		}
 
 		$until = gmdate( 'Y-m-d H:i:s', strtotime( $last_priority ) + self::HOLD_HOURS * HOUR_IN_SECONDS );
-		$ids   = implode( ',', $held );
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $ids is a list of integers.
-		$wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->prefix}fc_campaign_emails SET scheduled_at = %s WHERE id IN ($ids) AND status IN ('pending', 'scheduled')", $until ) );
+		CampaignEmail::whereIn( 'id', $held )
+			->whereIn( 'status', [ 'pending', 'scheduled' ] )
+			->update( [ 'scheduled_at' => $until ] );
+	}
+
+	/**
+	 * The automation each automation email came from.
+	 *
+	 * @param int[] $campaign_ids Automation email campaign IDs.
+	 * @return array<int,Funnel> Keyed by campaign ID.
+	 */
+	private static function automationsFor( array $campaign_ids ): array {
+		$campaigns  = FunnelCampaign::whereIn( 'id', array_unique( array_map( 'intval', $campaign_ids ) ) )->get();
+		$funnel_ids = array_unique( array_map( 'intval', $campaigns->pluck( 'parent_id' )->toArray() ) );
+		$funnels    = [];
+
+		foreach ( Funnel::whereIn( 'id', $funnel_ids )->get() as $funnel ) {
+			$funnels[ (int) $funnel->id ] = $funnel;
+		}
+
+		$by_campaign = [];
+
+		foreach ( $campaigns as $campaign ) {
+			$funnel = $funnels[ (int) $campaign->parent_id ] ?? null;
+
+			if ( $funnel ) {
+				$by_campaign[ (int) $campaign->id ] = $funnel;
+			}
+		}
+
+		return $by_campaign;
 	}
 
 	/**
 	 * Cart, renewal-cart and pre-renewal automations: never held, and they hold the others.
 	 *
-	 * @param object $automation Row with `funnel_id`, `title` and `trigger_name`.
+	 * @param Funnel $automation
 	 */
 	private static function isPriorityAutomation( $automation ): bool {
 		$is_priority = in_array( $automation->trigger_name, self::CART_TRIGGERS, true )
@@ -183,7 +228,7 @@ class CollisionGate {
 	/**
 	 * Onboarding and activation reminders: the automations whose emails can wait a day.
 	 *
-	 * @param object $automation Row with `funnel_id`, `title` and `trigger_name`.
+	 * @param Funnel $automation
 	 */
 	private static function isHoldableAutomation( $automation ): bool {
 		$is_holdable = 1 === preg_match( '/^(Onboarding|Activation reminder)/i', (string) $automation->title );

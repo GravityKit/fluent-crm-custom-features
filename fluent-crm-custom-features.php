@@ -174,6 +174,10 @@ add_action(
 			\CustomCRM\AbandonCart\Edd\EddCartTracking::registerEarlyHooks();
 			add_action( 'admin_init', [ \CustomCRM\AbandonCart\Edd\EddCartTracking::class, 'ensureIndexes' ] );
 
+			if ( is_admin() ) {
+				( new \CustomCRM\AbandonCart\Edd\DiscountSettingsPage() )->register();
+			}
+
 			if ( defined( 'WP_CLI' ) && WP_CLI ) {
 				\WP_CLI::add_command( 'customcrm cart prior-recipients', \CustomCRM\AbandonCart\Edd\PriorRecipientsCommand::class );
 			}
