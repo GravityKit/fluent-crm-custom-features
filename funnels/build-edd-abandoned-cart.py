@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds edd-abandoned-cart.json, the FluentCRM automation that replaces Recapture's 7 cart emails.
+"""Builds edd-abandoned-cart.json, the FluentCRM automation that replaces Recapture's cart emails with 3.
 
 Import it in FluentCRM > Automations > Import. It imports as a draft; nothing sends until it is
 published and the EDD abandoned-cart provider is enabled.
@@ -76,57 +76,8 @@ EMAILS = [
         "abandoned-cart-2",
     ),
     (
-        "Email 3: Social proof",
-        1, "days",
-        "What people REALLY say about GravityKit",
-        "“I can’t imagine not using GravityView on a WordPress site…”",
-        p("Hi " + NAME + ",")
-        + p("You were getting ready to purchase " + PRODUCTS + ", but didn’t finish. That’s ok—these things happen!")
-        + p("Your cart is saved for you. Complete your purchase whenever you’re ready 👇")
-        + button("Return and Complete Purchase")
-        + p("Our plugins have helped nonprofits, schools, startups, developers, web agencies and designers "
-            "extend Gravity Forms and build custom solutions on WordPress.")
-        + p("But don’t take our word for it… Here’s what people are really saying:")
-        + p("<em>“I can’t imagine not using GravityView on a WordPress site that collects any amount of data at all.”</em><br>"
-            "(Dan Muhlenkamp, entrepreneur)")
-        + p("<em>“Some of our clients want directories, and that’s where GravityView offers the perfect solution, "
-            "as it allows users to edit their listings right on the front end.”</em><br>(Bet Hannon, agency owner)")
-        + p("<em>“I am in awe of how easy it was to create a fully functioning system at the fraction of the cost of "
-            "other SIS systems (Student Information Systems) on the market.”</em><br>(Rochelle Victor, developer)")
-        + p('Ready to take Gravity Forms to the next level? <a href="' + URL + '">Go back and complete checkout</a>.')
-        + p("All the best,<br>Zack from GravityKit")
-        + p('P.S. If you’d like help deciding whether GravityKit is right for you, '
-            '<a href="https://www.gravitykit.com/consultation/">book a free consultation with me</a>.'),
-        "abandoned-cart-3",
-    ),
-    (
-        "Email 4: Success story",
-        1, "days",
-        "Learn from Pieroth’s success story",
-        "How this company saved money and time with GravityKit",
-        p("Hi " + NAME + ",")
-        + p("Pieroth came to GravityKit looking for a way to organize their eCommerce product catalogs and edit "
-            "the data when needed.")
-        + p("They already used Gravity Forms, so they looked for a tool that could put their form data to work.")
-        + p("<em>“I just started searching for a tool that would let us display Gravity Forms data on the front end "
-            "and I quickly found GravityView. It was perfect, just what we needed.”</em><br>"
-            "(Nicolas Johansson, Digital Manager at Pieroth)")
-        + p('<a href="https://www.gravitykit.com/case-study/pieroth/">Read Pieroth’s success story</a> and find out:')
-        + "<ul>"
-        + "<li>Why GravityKit suits mid-sized companies without a large IT team</li>"
-        + "<li>How GravityView makes it easy to display and update Gravity Forms entries with little technical knowledge</li>"
-        + "<li>How GravityKit lets you manage data on WordPress for a fraction of the cost of most SaaS tools</li>"
-        + "</ul>"
-        + p("We love this story. Give it a read—I think you will too.")
-        + p("Your cart is still saved when you’re ready:")
-        + CART
-        + button("Complete Your Purchase")
-        + p("All the best,<br>Zack from GravityKit"),
-        "abandoned-cart-4",
-    ),
-    (
-        "Email 5: Discount",
-        1, "days",
+        "Email 3: Discount",
+        3, "days",
         "Get " + AMOUNT + " off your GravityKit order (expires soon)",
         "A special gift, just for you.",
         p("Hey " + NAME + ", it’s Zack here with a special gift: a coupon for " + AMOUNT + " off your GravityKit order!")
@@ -138,47 +89,6 @@ EMAILS = [
         + p("Remember, this coupon expires in 48 hours—so don’t wait!")
         + p("– Zack from GravityKit"),
         "abandoned-cart-5",
-    ),
-    (
-        "Email 6: Discount last chance",
-        1, "days",
-        "Last chance to get " + AMOUNT + " off your GravityKit order!",
-        "It’s now or never—claim your special gift before it expires.",
-        p("Hi " + NAME + ", your " + AMOUNT + " off coupon expires tomorrow!")
-        + p("This is your last chance to take Gravity Forms to the next level, at a discount.")
-        + button("Continue Shopping and Save " + AMOUNT)
-        + CART
-        + p("Use code <strong>" + CODE + "</strong> within the next 24 hours to take " + AMOUNT
-            + " off your order. You’ll be glad you did!")
-        + p("All the best,<br>Zack from GravityKit"),
-        "abandoned-cart-6",
-    ),
-    (
-        "Email 7: Consultation",
-        2, "days",
-        "A free 20 minutes with me, if it helps",
-        "Walk away with a plan, even if it isn’t GravityKit.",
-        p("Hi " + NAME + ", quick chat?")
-        + p("It’s Zack here, the founder of GravityKit. 👋 You’ve heard from us a few times this week. I noticed "
-            "you got close to checking out and then stepped away. That’s completely fine!")
-        + p("<strong>💬 But if you’re stuck, let’s just talk</strong>")
-        + p("Instead of sending you another sales email, I want to offer something different. Grab 20 minutes on my "
-            "calendar (completely free) and we can talk through whatever’s on your mind:")
-        + "<ul>"
-        + "<li>The project you’re trying to build, and whether GravityKit is actually the right tool for it</li>"
-        + "<li>A specific Gravity Forms problem you’ve been wrestling with</li>"
-        + "<li>Questions about a plugin, a use case, or how a few of them fit together</li>"
-        + "<li>Or anything else you want a second opinion on</li>"
-        + "</ul>"
-        + button("Book a Free Consultation", "https://www.gravitykit.com/consultation/")
-        + p("No pitch, no pressure. If GravityKit ends up being the answer, great. If it doesn’t, you’ll still walk "
-            "away with a clearer picture of what to do next.")
-        + p("<strong>🤝 And if a call isn’t your thing</strong>")
-        + p("Just reply to this email. It comes straight to me, and I read every one. Tell me what you’re working on, "
-            "what tripped you up, or what would have made you click “buy.”")
-        + p("Either way, thanks for taking a look at GravityKit. I hope our paths cross again.")
-        + p("Zack Katz<br>Founder, GravityKit"),
-        "abandoned-cart-7",
     ),
 ]
 
@@ -239,14 +149,14 @@ for title, amount, unit, subject, preheader, body, utm in EMAILS:
     seq_id += 1
 
 funnel = {
-    "title": "Abandoned cart (EDD) – 7 emails",
+    "title": "Abandoned cart (EDD) – 3 emails",
     "trigger_name": "fc_ab_cart_simulation_edd",
     "status": "draft",
     "conditions": {"cart_conditions": [[]], "active_once": "no", "require_subscribed": "no"},
     "settings": {"priority": 10},
-    "sticky_note": {"content": "Replaces Recapture's 7 abandoned-cart emails (WEBSITE-380). Carts count as abandoned after the "
-                               "'capture after' minutes in Abandoned Cart settings (use 30). Emails 5–6 share one "
-                               "single-use 40% code per cart, valid 48 hours, created when email 5 sends."},
+    "sticky_note": {"content": "Replaces Recapture's abandoned-cart emails (WEBSITE-380). Carts count as abandoned after the "
+                               "'capture after' minutes in Abandoned Cart settings (use 30). Email 3 carries a single-use "
+                               "40% code per cart, valid 48 hours, created when it sends, on day 4."},
     "sequences": sequences,
 }
 

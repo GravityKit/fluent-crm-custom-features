@@ -173,6 +173,15 @@ add_action(
 		if ( customcrm_cart_drivers_are_available() && function_exists( 'EDD' ) ) {
 			\CustomCRM\AbandonCart\Edd\EddCartTracking::registerEarlyHooks();
 			add_action( 'admin_init', [ \CustomCRM\AbandonCart\Edd\EddCartTracking::class, 'ensureIndexes' ] );
+
+			if ( defined( 'WP_CLI' ) && WP_CLI ) {
+				\WP_CLI::add_command( 'customcrm cart prior-recipients', \CustomCRM\AbandonCart\Edd\PriorRecipientsCommand::class );
+			}
+		}
+
+		// Filter to false to send every email as FluentCRM schedules it.
+		if ( defined( 'FLUENTCRM' ) && apply_filters( 'customcrm/email_gate/enabled', true ) ) {
+			\CustomCRM\Email\CollisionGate::register();
 		}
 	},
 	20

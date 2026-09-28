@@ -128,7 +128,7 @@ class EddCartDriver extends AbstractCartDriver {
 	}
 
 	/**
-	 * Whether this contact entered this provider's automation within the resend cap.
+	 * Whether this contact entered this provider's automation, or got Recapture's cart emails, within the resend cap.
 	 *
 	 * @param AbandonCartModel $cart
 	 */
@@ -137,6 +137,10 @@ class EddCartDriver extends AbstractCartDriver {
 
 		if ( $cap_days <= 0 || ! $cart->email ) {
 			return false;
+		}
+
+		if ( PriorRecipients::lastSentAt( $cart->email ) >= time() - ( $cap_days * DAY_IN_SECONDS ) ) {
+			return true;
 		}
 
 		$contact = FluentCrmApi( 'contacts' )->getContact( $cart->email );

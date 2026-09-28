@@ -261,6 +261,88 @@ try {
 	t402_check( 'email and user_id indexes exist, option set', in_array( 'customcrm_email', $keys, true ) && in_array( 'customcrm_user_id', $keys, true ) && 1 === (int) get_option( 'customcrm_ab_cart_indexes' ), array_values( array_unique( $keys ) ) );
 	$explain = $wpdb->get_row( $wpdb->prepare( "EXPLAIN SELECT * FROM {$p}fc_abandoned_carts WHERE email=%s", 'x@y.z' ), ARRAY_A );
 	t402_check( 'email lookup uses the index', 'customcrm_email' === ( $explain['key'] ?? '' ) || 'customcrm_email' === ( $explain['possible_keys'] ?? '' ), $explain );
+
+	// 11. Collision rules. Emails are never really sent: FluentCRM's mailer is simulated for this run.
+	add_filter( 'fluent_crm/is_simulated_mail', '__return_true', 1 );
+	$gate_contact  = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => t402_email( 'gate' ), 'status' => 'subscribed' ] );
+	$other_contact = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => t402_email( 'gatecontrol' ), 'status' => 'subscribed' ] );
+	$cart_funnel   = (int) $wpdb->get_var( "SELECT id FROM {$p}fc_funnels WHERE trigger_name='fc_ab_cart_simulation_edd' ORDER BY id LIMIT 1" );
+	$cart_camps    = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$p}fc_campaigns WHERE type='funnel_email_campaign' AND parent_id=%d ORDER BY id LIMIT 2", $cart_funnel ) ) );
+	$cart_camp     = $cart_camps[0] ?? 0;
+	$cart_camp_2   = $cart_camps[1] ?? 0;
+	$onb_camp      = (int) $wpdb->get_var( "SELECT c.id FROM {$p}fc_campaigns c JOIN {$p}fc_funnels f ON f.id=c.parent_id WHERE c.type='funnel_email_campaign' AND f.title LIKE 'Onboarding:%' LIMIT 1" );
+	$news_camp     = (int) $wpdb->get_var( "SELECT id FROM {$p}fc_campaigns WHERE type='campaign' ORDER BY id DESC LIMIT 1" );
+	t402_check( 'gate fixtures found', $cart_camp && $cart_camp_2 && $onb_camp && $news_camp, compact( 'cart_camp', 'cart_camp_2', 'onb_camp', 'news_camp' ) );
+
+	$now      = current_time( 'mysql' );
+	$add_mail = function ( int $contact, int $campaign, string $status, string $at ) use ( $wpdb, $p ) {
+		$wpdb->insert( "{$p}fc_campaign_emails", [ 'campaign_id' => $campaign, 'subscriber_id' => $contact, 'email_address' => 't402@invalid', 'status' => $status, 'scheduled_at' => $at, 'email_type' => 'campaign', 'created_at' => $at, 'updated_at' => $at ] );
+		return (int) $wpdb->insert_id;
+	};
+	$mail_status = function ( int $id ) use ( $wpdb, $p ) {
+		return $wpdb->get_row( $wpdb->prepare( "SELECT status, scheduled_at FROM {$p}fc_campaign_emails WHERE id=%d", $id ) );
+	};
+
+	$wpdb->insert( "{$p}fc_funnel_subscribers", [ 'funnel_id' => $cart_funnel, 'subscriber_id' => $gate_contact->id, 'status' => 'active', 'starting_sequence_id' => 0, 'created_at' => $now, 'updated_at' => $now ] );
+	$news_in   = $add_mail( (int) $gate_contact->id, $news_camp, 'pending', $now );
+	$news_out  = $add_mail( (int) $other_contact->id, $news_camp, 'pending', $now );
+	\CustomCRM\Email\CollisionGate::beforeBatchSend( false );
+	t402_check( 'newsletter cancelled for a contact in a cart automation', 'cancelled' === $mail_status( $news_in )->status, $mail_status( $news_in ) );
+	t402_check( 'control: newsletter kept for a contact not in one', 'pending' === $mail_status( $news_out )->status, $mail_status( $news_out ) );
+
+	$an_hour_ago = gmdate( 'Y-m-d H:i:s', strtotime( $now ) - HOUR_IN_SECONDS );
+	$cart_mail   = $add_mail( (int) $gate_contact->id, $cart_camp, 'sent', $an_hour_ago );
+	$onb_held    = $add_mail( (int) $gate_contact->id, $onb_camp, 'scheduled', $now );
+	$onb_free    = $add_mail( (int) $other_contact->id, $onb_camp, 'scheduled', $now );
+	$cart_due    = $add_mail( (int) $gate_contact->id, $cart_camp_2, 'scheduled', $now );
+	$wpdb->query( "UPDATE {$p}fc_campaign_emails SET email_type='funnel_email_campaign' WHERE id IN ($cart_mail,$onb_held,$onb_free,$cart_due)" );
+	\CustomCRM\Email\CollisionGate::beforeContactSend( $gate_contact );
+	\CustomCRM\Email\CollisionGate::beforeContactSend( $other_contact );
+	// Held from the latest cart email: the one due now, not the one sent an hour ago.
+	$expected = gmdate( 'Y-m-d H:i:s', strtotime( $now ) + DAY_IN_SECONDS );
+	t402_check( 'onboarding email held until 24h after the latest cart email', $expected === $mail_status( $onb_held )->scheduled_at, [ 'got' => $mail_status( $onb_held )->scheduled_at, 'expected' => $expected ] );
+	t402_check( 'control: onboarding email for a contact with no cart email is not held', $now === $mail_status( $onb_free )->scheduled_at, $mail_status( $onb_free ) );
+	t402_check( 'a cart email is never held', $now === $mail_status( $cart_due )->scheduled_at, $mail_status( $cart_due ) );
+
+	// Through FluentCRM's own per-contact send path: the held email must not go out.
+	$wpdb->update( "{$p}fc_campaign_emails", [ 'status' => 'cancelled' ], [ 'id' => $cart_due ] );
+	// One row per campaign per contact: reuse the newsletter row, due again.
+	$wpdb->update( "{$p}fc_campaign_emails", [ 'status' => 'pending', 'scheduled_at' => $now ], [ 'id' => $news_in ] );
+	$news_again = $news_in;
+	// FluentCRM sends for one contact per request (it guards on `fluent_crm/sending_emails_starting`), so the control goes first.
+	do_action( 'fluentcrm_process_contact_jobs', $other_contact );
+	t402_check( 'control: send path sends the unheld onboarding email', 'sent' === $mail_status( $onb_free )->status, $mail_status( $onb_free ) );
+	do_action( 'fluentcrm_process_contact_jobs', $gate_contact );
+	t402_check( 'send path: held onboarding email stays scheduled', 'scheduled' === $mail_status( $onb_held )->status, $mail_status( $onb_held ) );
+	t402_check( 'send path: newsletter cancelled, not sent', 'cancelled' === $mail_status( $news_again )->status, $mail_status( $news_again ) );
+	remove_filter( 'fluent_crm/is_simulated_mail', '__return_true', 1 );
+	$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}fc_campaign_emails WHERE subscriber_id IN (%d, %d)", $gate_contact->id, $other_contact->id ) );
+
+	// 12. Shoppers Recapture emailed count toward the resend cap.
+	$csv = tempnam( sys_get_temp_dir(), 't402' );
+	$recent_email = t402_email( 'recapture-recent' );
+	$old_email    = t402_email( 'recapture-old' );
+	file_put_contents( $csv, "email,last_sent_at\n" . strtoupper( $recent_email ) . ',' . gmdate( 'Y-m-d\TH:i:s\Z', time() - 5 * DAY_IN_SECONDS ) . "\n{$old_email}," . ( time() - 30 * DAY_IN_SECONDS ) . "\nnot-an-email,2026-01-01\n" );
+	$prior_backup = get_option( \CustomCRM\AbandonCart\Edd\PriorRecipients::OPTION, null );
+	$stored       = \CustomCRM\AbandonCart\Edd\PriorRecipients::import( $csv );
+	unlink( $csv );
+	$sent_check   = new ReflectionMethod( EddCartDriver::class, 'sentRecently' );
+	$sent_check->setAccessible( true );
+	$recent_cart  = t402_cart( $recent_email, 'draft' );
+	$old_cart     = t402_cart( $old_email, 'draft' );
+	t402_check( 'prior recipients: 2 valid rows stored', 2 === $stored, $stored );
+	t402_check( 'emailed by Recapture 5 days ago: capped', true === $sent_check->invoke( new EddCartDriver(), $recent_cart ) );
+	t402_check( 'control: emailed 30 days ago: not capped', false === $sent_check->invoke( new EddCartDriver(), $old_cart ) );
+	if ( null === $prior_backup ) {
+		delete_option( \CustomCRM\AbandonCart\Edd\PriorRecipients::OPTION );
+	} else {
+		update_option( \CustomCRM\AbandonCart\Edd\PriorRecipients::OPTION, $prior_backup, false );
+	}
+
+	// 13. The new-purchase automation is 3 emails, with the code on day 4.
+	$funnel_json = json_decode( (string) file_get_contents( WP_PLUGIN_DIR . '/fluent-crm-custom-features/funnels/edd-abandoned-cart.json' ), true );
+	$steps       = array_map( function ( $s ) { return $s['action_name'] . ':' . ( $s['settings']['wait_time_amount'] ?? '' ) . ( $s['settings']['wait_time_unit'] ?? '' ); }, (array) ( $funnel_json['sequences'] ?? [] ) );
+	t402_check( 'automation JSON: wait 15m, email, wait 24h, email, wait 3d, email', [ 'fluentcrm_wait_times:15minutes', 'send_custom_email:', 'fluentcrm_wait_times:1425minutes', 'send_custom_email:', 'fluentcrm_wait_times:3days', 'send_custom_email:' ] === $steps, $steps );
 } catch ( Throwable $e ) {
 	t402_check( 'no exception', false, get_class( $e ) . ': ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine() );
 } finally {
