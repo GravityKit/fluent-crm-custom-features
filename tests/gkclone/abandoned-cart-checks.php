@@ -140,6 +140,38 @@ try {
 		$after->cart['recovery_discounts'] ?? null
 	);
 
+	// 3b. Typing someone else's email never hands over their cart once it is being emailed.
+	$victim_email = t402_email( 'victim' );
+	$victim       = t402_cart( $victim_email, 'processing' );
+	$victim_key   = $victim->checkout_key;
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+	edd_empty_cart();
+	edd_add_to_cart( $download_id, null === $price_id ? [] : [ 'price_id' => $price_id ] );
+	$other  = $tracker->syncCart( $victim_email );
+	$victim = AbandonCartModel::find( $victim->id );
+	t402_check(
+		'email match does not take over a cart being emailed',
+		$other && (int) $other->id !== (int) $victim->id && ( $_COOKIE['fc_ab_edd_cart_token'] ?? '' ) !== $victim_key && 'processing' === $victim->status,
+		[ 'new' => $other ? $other->id : null, 'victim' => $victim->id ]
+	);
+	$draft_again = $tracker->syncCart( $victim_email );
+	t402_check( 'control: same email still updates its own draft', $draft_again && (int) $draft_again->id === (int) $other->id, [ $draft_again ? $draft_again->id : null, $other->id ] );
+
+	// 3c. An error inside a cart hook never breaks add-to-cart.
+	$_COOKIE['fc_ab_edd_cart_token'] = $other->checkout_key;
+	$boom = function () { throw new RuntimeException( 't402 boom' ); };
+	add_filter( 'customcrm/edd_ab_cart/ignored_email_domains', $boom );
+	$threw = null;
+	try {
+		edd_empty_cart();
+		edd_add_to_cart( $download_id, null === $price_id ? [] : [ 'price_id' => $price_id ] );
+	} catch ( Throwable $e ) {
+		$threw = $e->getMessage();
+	}
+	remove_filter( 'customcrm/edd_ab_cart/ignored_email_domains', $boom );
+	t402_check( 'a failing cart hook does not break add-to-cart', null === $threw && 1 === count( (array) edd_get_cart_contents() ), $threw );
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+
 	// 4. A restore does not re-sync the cart item by item. Control: a normal add-to-cart does.
 	$after->cart_hash = 'sentinel';
 	$after->save();
@@ -341,6 +373,16 @@ try {
 	do_action( 'fluentcrm_process_contact_jobs', $gate_contact );
 	t402_check( 'send path: held onboarding email stays scheduled', 'scheduled' === $mail_status( $onb_held )->status, $mail_status( $onb_held ) );
 	t402_check( 'send path: newsletter cancelled, not sent', 'cancelled' === $mail_status( $news_again )->status, $mail_status( $news_again ) );
+	$gate_boom  = function () { throw new RuntimeException( 't402 gate boom' ); };
+	add_filter( 'customcrm/email_gate/is_priority_automation', $gate_boom );
+	$gate_threw = null;
+	try {
+		\CustomCRM\Email\CollisionGate::beforeContactSend( $gate_contact );
+	} catch ( Throwable $e ) {
+		$gate_threw = $e->getMessage();
+	}
+	remove_filter( 'customcrm/email_gate/is_priority_automation', $gate_boom );
+	t402_check( 'a failing send rule does not stop sending', null === $gate_threw, $gate_threw );
 	remove_filter( 'fluent_crm/is_simulated_mail', '__return_true', 1 );
 	$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}fc_campaign_emails WHERE subscriber_id IN (%d, %d)", $gate_contact->id, $other_contact->id ) );
 

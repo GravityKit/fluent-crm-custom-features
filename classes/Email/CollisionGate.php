@@ -45,7 +45,12 @@ class CollisionGate {
 
 		$done = true;
 
-		self::cancelCampaignEmails( self::contactsInCartAutomation() );
+		// Runs inside FluentCRM's sender: an error must never stop email sending.
+		try {
+			self::cancelCampaignEmails( self::contactsInCartAutomation() );
+		} catch ( \Throwable $e ) {
+			\CustomCRM\AbandonCart\Edd\EddCartTracking::logError( 'CollisionGate::beforeBatchSend', $e );
+		}
 
 		return $disabled;
 	}
@@ -58,12 +63,17 @@ class CollisionGate {
 	public static function beforeContactSend( $subscriber ): void {
 		$contact_id = is_object( $subscriber ) ? (int) $subscriber->id : 0;
 
-		if ( ! $contact_id ) {
+		// FluentCRM sends nothing per contact during a bulk import, so there is nothing to hold.
+		if ( ! $contact_id || defined( 'FLUENTCRM_DOING_BULK_IMPORT' ) ) {
 			return;
 		}
 
-		self::cancelCampaignEmails( self::contactsInCartAutomation( $contact_id ) );
-		self::holdLowPriorityEmails( $contact_id );
+		try {
+			self::cancelCampaignEmails( self::contactsInCartAutomation( $contact_id ) );
+			self::holdLowPriorityEmails( $contact_id );
+		} catch ( \Throwable $e ) {
+			\CustomCRM\AbandonCart\Edd\EddCartTracking::logError( 'CollisionGate::beforeContactSend', $e );
+		}
 	}
 
 	/**

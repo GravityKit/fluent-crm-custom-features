@@ -88,7 +88,14 @@ class EddCartTracking {
 				add_action(
 					'template_redirect',
 					function () use ( $data ) {
-						$this->restoreCart( $data );
+						try {
+							$this->restoreCart( $data );
+						} catch ( \Throwable $e ) {
+							self::$restoring = false;
+							self::logError( 'restoreCart', $e );
+							wp_safe_redirect( edd_get_checkout_uri() );
+							exit;
+						}
 					},
 					1
 				);
@@ -107,11 +114,17 @@ class EddCartTracking {
 	 * a normal form post. Each callback checks at run time that EDD carts are enabled.
 	 */
 	public static function registerEarlyHooks(): void {
+		// These run inside add-to-cart and order completion. An error here is logged and swallowed:
+		// a missed cart email is recoverable, a broken checkout or undelivered license key is not.
 		$call = function ( string $method ) {
 			return function ( ...$args ) use ( $method ) {
-				$tracking = self::instanceIfEnabled();
-				if ( $tracking ) {
-					$tracking->{$method}( ...$args );
+				try {
+					$tracking = self::instanceIfEnabled();
+					if ( $tracking ) {
+						$tracking->{$method}( ...$args );
+					}
+				} catch ( \Throwable $e ) {
+					self::logError( $method, $e );
 				}
 			};
 		};
@@ -145,6 +158,13 @@ class EddCartTracking {
 			10,
 			2
 		);
+	}
+
+	/**
+	 * Logs an error from a cart or order hook without interrupting the request.
+	 */
+	public static function logError( string $where, \Throwable $e ): void {
+		error_log( sprintf( '[fluent-crm-custom-features] %s: %s in %s:%d', $where, $e->getMessage(), $e->getFile(), $e->getLine() ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 	}
 
 	/**
@@ -192,7 +212,7 @@ class EddCartTracking {
 			}
 		}
 
-		update_option( self::INDEX_OPTION, 1, false );
+		update_option( self::INDEX_OPTION, 1, true );
 	}
 
 	/**
@@ -1037,8 +1057,10 @@ class EddCartTracking {
 			}
 		}
 
+		// Anyone can type any email at checkout, so a match on email alone never hands over a cart
+		// that is being emailed: its recovery link and discount code belong to that shopper.
 		if ( $email ) {
-			$record = $query()->where( 'email', $email )->orderBy( 'id', 'DESC' )->first();
+			$record = $query()->where( 'email', $email )->whereIn( 'status', [ 'draft', 'pending' ] )->orderBy( 'id', 'DESC' )->first();
 			if ( $record ) {
 				return $record;
 			}
