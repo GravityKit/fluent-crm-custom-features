@@ -61,13 +61,18 @@ class PriorRecipients {
 
 		update_option( self::OPTION, $list, false );
 
+		// update_option() also returns false for an unchanged value, so read back instead.
+		if ( get_option( self::OPTION ) !== $list ) {
+			throw new \RuntimeException( 'The recipient list could not be saved.' );
+		}
+
 		return count( $list );
 	}
 
 	/**
-	 * Hashed so the option holds no readable addresses.
+	 * Keyed with the site's salt, so the stored list cannot be checked against guessed addresses.
 	 */
 	private static function key( string $email ): string {
-		return md5( strtolower( trim( $email ) ) );
+		return hash_hmac( 'sha256', strtolower( trim( $email ) ), wp_salt( 'auth' ) );
 	}
 }

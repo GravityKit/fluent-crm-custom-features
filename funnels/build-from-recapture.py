@@ -122,10 +122,14 @@ def body(blocks, group, url, code_line):
         elif t == "button":
             # Recapture button targets: "cart" (the recovery link), "home" (the store), or "url" with custom_url.
             target = {"cart": url, "home": "https://www.gravitykit.com/"}.get(b.get("url"), b.get("custom_url") or url)
+            bg = b.get("background_color") or "#4f46e5"
+            fg = b.get("text_color") or "#ffffff"
+            if fg.lower() == bg.lower():
+                report.append("button text and background are both %s; set a readable text color" % bg)
             out.append(
-                '<p style="margin:24px 0;"><a class="fc_button" href="%s" style="display:inline-block;background:%s;color:#ffffff;'
+                '<p style="margin:24px 0;"><a class="fc_button" href="%s" style="display:inline-block;background:%s;color:%s;'
                 'padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;">%s</a></p>'
-                % (target, b.get("background_color") or "#4f46e5", re.sub(r"<[^>]+>", "", merge_tags(b.get("content", ""), group, url)).strip())
+                % (target, bg, fg, re.sub(r"<[^>]+>", "", merge_tags(b.get("content", ""), group, url)).strip())
             )
         elif t == "abandoned-products":
             out.append("{{%s.cart_items_table}}" % group)
@@ -260,6 +264,9 @@ for it in items:
 
 index = []
 for (program, family), emails in sorted(families.items()):
+    # Recapture's "[COPY]" campaigns are duplicates made while editing; keep the original when both exist.
+    originals = {e["subject"] for e in emails if not re.search(r"\[COPY\]\s*$", e["title"])}
+    emails[:] = [e for e in emails if not (re.search(r"\[COPY\]\s*$", e["title"]) and e["subject"] in originals)]
     emails.sort(key=lambda e: e["minutes"])
     group = emails[0]["group"] or "ab_cart_edd"
     conds, cond_notes = conditions(emails[0]["segment"], group)
@@ -274,6 +281,9 @@ for (program, family), emails in sorted(families.items()):
         note.append("Recapture had no conditions on this campaign, so it applies to every order.")
     if differing:
         note.append("These emails had different conditions in Recapture and use the first email's here: " + ", ".join(differing))
+    placeholders = sorted({m for e in emails for m in re.findall(r"\b[A-Z]+(?:_[A-Z]+)*_CODE\b", e["body"])})
+    if placeholders:
+        note.append("The emails contain the placeholder text %s; replace it with a real code before publishing." % ", ".join(placeholders))
     codes = sorted({e["code"] for e in emails if e["code"]})
     if codes:
         note.append("Discounts: " + ", ".join(codes) + ". Check that store-wide codes exist and are active in EDD before publishing.")

@@ -914,7 +914,7 @@ class EddCartTracking {
 				return ( new EddRecoveryDiscount() )->getAmountLabel();
 			case 'recovery_discount_expires':
 				$discount = ( new EddRecoveryDiscount() )->getOrCreate( $cart );
-				return $discount ? date_i18n( get_option( 'date_format' ), $discount['expires'] + ( (int) get_option( 'gmt_offset' ) * HOUR_IN_SECONDS ) ) : $default_value;
+				return $discount && $discount['expires'] ? (string) wp_date( get_option( 'date_format' ), $discount['expires'] ) : $default_value;
 			case 'license_expiration':
 			case 'license_status':
 				$expirations = array_filter( array_map( 'intval', wp_list_pluck( $items, 'license_expiration' ) ) );
@@ -966,7 +966,7 @@ class EddCartTracking {
 			return $discount['code'];
 		}
 
-		return $discount['expires'] ? date_i18n( get_option( 'date_format' ), $discount['expires'] + ( (int) get_option( 'gmt_offset' ) * HOUR_IN_SECONDS ) ) : $default_value;
+		return $discount['expires'] ? (string) wp_date( get_option( 'date_format' ), $discount['expires'] ) : $default_value;
 	}
 
 	/**
