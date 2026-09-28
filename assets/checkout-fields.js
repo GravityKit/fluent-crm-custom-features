@@ -5,18 +5,45 @@
 ( function () {
 	'use strict';
 
+	/**
+	 * Settings printed by EddCartTracking::enqueueCheckoutScript().
+	 *
+	 * @typedef {Object} CheckoutConfig
+	 * @property {string} ajaxUrl      admin-ajax.php URL.
+	 * @property {string} nonce        Nonce for both AJAX actions.
+	 * @property {string} syncAction   AJAX action that saves the cart for an email.
+	 * @property {string} optOutAction AJAX action that stops tracking this visitor.
+	 * @property {string} gdprMessage  Notice HTML shown under the email field; empty for none.
+	 */
+
+	/** @type {CheckoutConfig|undefined} */
 	var config = window.customcrmEddAbCart;
 
 	if ( ! config ) {
 		return;
 	}
 
+	/** Loose shape check; the server validates the address properly. */
 	var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+	/** @type {string} Email and names last sent, joined with "|"; empty to force the next send. */
 	var lastSent = '';
+
+	/** @type {number|null} Debounce timer for typing. */
 	var timer = null;
+
+	/** @type {boolean} A sync request is waiting for its response. */
 	var inFlight = false;
+
+	/** @type {boolean} Another sync was asked for while one was in flight. */
 	var queued = false;
 
+	/**
+	 * The first element matching any of the selectors, in order.
+	 *
+	 * @param {string[]} selectors
+	 * @return {HTMLInputElement|null}
+	 */
 	function field( selectors ) {
 		for ( var i = 0; i < selectors.length; i++ ) {
 			var el = document.querySelector( selectors[ i ] );
@@ -27,10 +54,22 @@
 		return null;
 	}
 
+	/**
+	 * The checkout email field, across EDD versions and themes.
+	 *
+	 * @return {HTMLInputElement|null}
+	 */
 	function emailField() {
 		return field( [ '#edd-email', 'input[name="edd_email"]', '#edd_purchase_form input[type="email"]' ] );
 	}
 
+	/**
+	 * Posts an action with the nonce to admin-ajax.php.
+	 *
+	 * @param {string}                 action AJAX action name.
+	 * @param {Object<string, string>} [data] Extra form fields.
+	 * @return {Promise<Response>}
+	 */
 	function post( action, data ) {
 		var body = new URLSearchParams();
 		body.append( 'action', action );
@@ -47,6 +86,9 @@
 		} );
 	}
 
+	/**
+	 * Sends the email and name to the server when the email looks valid and something changed.
+	 */
 	function sync() {
 		var email = emailField();
 		if ( ! email ) {
@@ -88,11 +130,17 @@
 			} );
 	}
 
+	/**
+	 * Syncs 800ms after the shopper stops typing.
+	 */
 	function schedule() {
 		clearTimeout( timer );
 		timer = setTimeout( sync, 800 );
 	}
 
+	/**
+	 * Shows the tracking notice under the email field, with its opt-out link wired up. Once per form.
+	 */
 	function addGdprNotice() {
 		var email = emailField();
 		if ( ! config.gdprMessage || ! email || document.getElementById( 'customcrm-ab-cart-gdpr' ) ) {
@@ -118,8 +166,12 @@
 
 	// EDD loads the purchase form over AJAX (and reloads it when the gateway changes), so the
 	// email field usually does not exist yet when this runs. Set up each field as it appears.
+	/** @type {HTMLInputElement|null} The email field already set up. */
 	var seenField = null;
 
+	/**
+	 * Sets up a newly rendered purchase form: the notice, and a sync for an email already filled in.
+	 */
 	function onFormReady() {
 		var email = emailField();
 		if ( ! email || email === seenField ) {
@@ -131,6 +183,9 @@
 		sync();
 	}
 
+	/**
+	 * Watches for the purchase form and listens for typing in its email and name fields.
+	 */
 	function init() {
 		onFormReady();
 
