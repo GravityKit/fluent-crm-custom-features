@@ -27,6 +27,9 @@ class EddCartTracking {
 	private const PROVIDERS     = [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER ];
 	private const INDEX_OPTION  = 'customcrm_ab_cart_indexes';
 
+	/** Days after a renewal cart is marked lost that renewing its license still counts as recovering it. */
+	private const LOST_RENEWAL_DAYS = 30;
+
 	/**
 	 * License IDs renewed during this request. Their carts are closed at shutdown, so an order
 	 * completing in the same request marks its own cart recovered first.
@@ -590,9 +593,23 @@ class EddCartTracking {
 			return;
 		}
 
+		// A lost cart counts for 30 days after it was marked lost; a renewal after that is not a recovery.
+		// FluentCRM marks carts lost `lost_cart_days` after they were created, in site-local time.
+		$lost_days   = (int) AbCartHelper::getSetting( 'lost_cart_days', 15 ) + self::LOST_RENEWAL_DAYS;
+		$lost_cutoff = gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - ( $lost_days * DAY_IN_SECONDS ) );
+
 		$driver = new EddRenewalCartDriver();
 		$carts  = AbandonCartModel::where( 'provider', EddRenewalCartDriver::PROVIDER )
-			->whereIn( 'status', [ 'draft', 'pending', 'processing', 'lost', 'opt_out' ] )
+			->where(
+				function ( $query ) use ( $lost_cutoff ) {
+					$query->whereIn( 'status', [ 'draft', 'pending', 'processing', 'opt_out' ] )
+						->orWhere(
+							function ( $lost ) use ( $lost_cutoff ) {
+								$lost->where( 'status', 'lost' )->where( 'created_at', '>=', $lost_cutoff );
+							}
+						);
+				}
+			)
 			->get();
 
 		foreach ( $carts as $cart ) {

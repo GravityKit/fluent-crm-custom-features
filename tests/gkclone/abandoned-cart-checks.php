@@ -219,6 +219,32 @@ try {
 	t402_check( 'upgraded license closes its renewal cart', 'recovered' === $up_cart->status && 'Upgraded instead of renewed' === $up_cart->note && (int) $up_cart->order_id === $up_order, [ 'status' => $up_cart->status, 'note' => $up_cart->note, 'order' => $up_cart->order_id ] );
 	t402_check( 'control: other license cart stays open', 'processing' === $other_cart->status, $other_cart->status );
 
+	// 7b. Renewing a license recovers its recently lost renewal cart, not one lost long ago. The renewal is
+	// recorded straight on the tracker, so no other plugin's renewal listeners run against gkclone data.
+	$more_lics = $wpdb->get_results( "SELECT id, expiration FROM {$p}edd_licenses WHERE status IN ('active','expired') AND expiration > 0 ORDER BY id DESC LIMIT 2 OFFSET 2" );
+	$lost_cart = function ( object $lic, string $tag, int $days_ago ) {
+		$c  = t402_cart( t402_email( $tag ), 'lost', 'edd_renewal' );
+		$cc = $c->cart;
+		// Saved before the renewal, so the license's current expiration is later: it was renewed.
+		$cc['cart_contents'][0] = array_merge( $cc['cart_contents'][0], [ 'license_id' => (int) $lic->id, 'is_renewal' => true, 'license_expiration' => (int) $lic->expiration - DAY_IN_SECONDS ] );
+		$c->cart = $cc;
+		$c->save();
+		global $wpdb;
+		$wpdb->update( "{$wpdb->prefix}fc_abandoned_carts", [ 'created_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - $days_ago * DAY_IN_SECONDS ) ], [ 'id' => $c->id ] );
+		return $c;
+	};
+	$recent_lost = $lost_cart( $more_lics[0], 'lostrecent', 15 );
+	$old_lost    = $lost_cart( $more_lics[1], 'lostold', 60 );
+	$renewed     = new ReflectionProperty( EddCartTracking::class, 'renewed_licenses' );
+	$renewed->setAccessible( true );
+	$renewed->setValue( null, [ (int) $more_lics[0]->id, (int) $more_lics[1]->id ] );
+	$tracker->closeRenewedCarts();
+	$renewed->setValue( null, [] );
+	$recent_lost = AbandonCartModel::find( $recent_lost->id );
+	$old_lost    = AbandonCartModel::find( $old_lost->id );
+	t402_check( 'renewal recovers a renewal cart lost 5 days ago', 'recovered' === $recent_lost->status, $recent_lost->status );
+	t402_check( 'renewal leaves a renewal cart lost 50 days ago alone', 'lost' === $old_lost->status, $old_lost->status );
+
 	// 8. sentRecently ignores cancelled runs. Control: a completed run still counts.
 	$contact = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => t402_email( 'resend' ), 'status' => 'transactional' ] );
 	$funnel  = (int) $wpdb->get_var( "SELECT id FROM {$p}fc_funnels WHERE trigger_name='fc_ab_cart_simulation_edd' ORDER BY id LIMIT 1" );
