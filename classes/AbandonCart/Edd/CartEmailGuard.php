@@ -4,7 +4,7 @@ namespace CustomCRM\AbandonCart\Edd;
 
 use FluentCrm\App\Models\CampaignEmail;
 use FluentCrm\App\Models\Funnel;
-use FluentCrm\App\Models\FunnelCampaign;
+use FluentCrm\App\Models\FunnelSequence;
 
 /**
  * Send-time backstop for internal-only mode: cancels any cart-automation email addressed outside
@@ -57,6 +57,35 @@ class CartEmailGuard {
 	}
 
 	/**
+	 * The email campaigns the cart automations' send-email steps use.
+	 *
+	 * Read from the steps, not from `parent_id`: FluentCRM reuses automation IDs, so on live a cart
+	 * automation shares its `parent_id` with emails from deleted automations such as old onboarding.
+	 *
+	 * @return int[]
+	 */
+	private static function cartCampaignIds(): array {
+		$funnel_ids = Funnel::whereIn( 'trigger_name', self::CART_TRIGGERS )->pluck( 'id' )->toArray();
+
+		if ( ! $funnel_ids ) {
+			return [];
+		}
+
+		$ids = [];
+
+		foreach ( FunnelSequence::whereIn( 'funnel_id', $funnel_ids )->where( 'action_name', 'send_custom_email' )->get() as $step ) {
+			$settings    = is_array( $step->settings ) ? $step->settings : [];
+			$campaign_id = (int) ( $settings['reference_campaign'] ?? 0 );
+
+			if ( $campaign_id ) {
+				$ids[] = $campaign_id;
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
+	}
+
+	/**
 	 * Cancels unsent cart-automation emails to addresses outside the allowed domains.
 	 *
 	 * @param int $contact_id Limit to one contact; 0 for all.
@@ -68,8 +97,7 @@ class CartEmailGuard {
 				return 0;
 			}
 
-			$funnel_ids   = Funnel::whereIn( 'trigger_name', self::CART_TRIGGERS )->pluck( 'id' )->toArray();
-			$campaign_ids = $funnel_ids ? FunnelCampaign::whereIn( 'parent_id', $funnel_ids )->pluck( 'id' )->toArray() : [];
+			$campaign_ids = self::cartCampaignIds();
 
 			if ( ! $campaign_ids ) {
 				return 0;

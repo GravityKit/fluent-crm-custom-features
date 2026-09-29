@@ -566,15 +566,19 @@ katz.co",
 	$scope_contact = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => t402_email( 'scopeoutside' ), 'status' => 'subscribed' ] );
 	$onboarding    = (int) $wpdb->get_var( "SELECT c.id FROM {$p}fc_campaigns c JOIN {$p}fc_funnels f ON f.id = c.parent_id WHERE c.type = 'funnel_email_campaign' AND f.title LIKE 'Onboarding:%' LIMIT 1" );
 	$newsletter    = (int) $wpdb->get_var( "SELECT id FROM {$p}fc_campaigns WHERE type = 'campaign' ORDER BY id DESC LIMIT 1" );
+	// A leftover email campaign sharing the cart automation's parent_id but used by none of its steps,
+	// as FluentCRM leaves behind when it reuses an automation ID (live has about 70 of these).
+	$stale = \FluentCrm\App\Models\FunnelCampaign::create( [ 'title' => 'T402 leftover campaign', 'parent_id' => $cart_funnel_model->id, 'email_subject' => 'T402 leftover', 'email_body' => '<p>t402</p>', 'status' => 'published' ] );
 	$scope_rows    = [];
-	foreach ( [ $onboarding, $newsletter ] as $campaign_id ) {
+	foreach ( [ $onboarding, $newsletter, (int) $stale->id ] as $campaign_id ) {
 		$wpdb->insert( "{$p}fc_campaign_emails", [ 'campaign_id' => $campaign_id, 'subscriber_id' => $scope_contact->id, 'email_address' => $scope_contact->email, 'status' => 'scheduled', 'scheduled_at' => current_time( 'mysql' ), 'email_type' => 'campaign', 'created_at' => current_time( 'mysql' ), 'updated_at' => current_time( 'mysql' ) ] );
 		$scope_rows[] = (int) $wpdb->insert_id;
 	}
 	\CustomCRM\AbandonCart\Edd\CartEmailGuard::cancelOutsideEmails();
 	$scope_statuses = $wpdb->get_col( 'SELECT status FROM ' . $p . 'fc_campaign_emails WHERE id IN (' . implode( ',', $scope_rows ) . ')' );
-	t402_check( 'scope: onboarding and newsletter emails to outside addresses are untouched', [ 'scheduled', 'scheduled' ] === $scope_statuses, $scope_statuses );
+	t402_check( 'scope: onboarding, newsletter and a leftover campaign sharing the cart parent ID are untouched', [ 'scheduled', 'scheduled', 'scheduled' ] === $scope_statuses, $scope_statuses );
 	$wpdb->query( 'DELETE FROM ' . $p . 'fc_campaign_emails WHERE id IN (' . implode( ',', $scope_rows ) . ')' );
+	$wpdb->delete( "{$p}fc_campaigns", [ 'id' => (int) $stale->id ] );
 	\CustomCRM\AbandonCart\Edd\AllowedDomains::save( '' );
 	t402_check( 'guard: does nothing when no domains are listed', 0 === \CustomCRM\AbandonCart\Edd\CartEmailGuard::cancelOutsideEmails() );
 	remove_filter( 'fluent_crm/is_simulated_mail', $capture, 1 );
