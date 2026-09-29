@@ -21,6 +21,9 @@ AMOUNT = "{{" + G + ".recovery_discount_amount}}"
 from email_blocks import bullets, button, greeting, header, para, raw, signature
 
 SIGN = signature(["Zack Katz", "Founder, GravityKit"])
+CALL = "https://www.gravitykit.com/consultation/"
+PS_CALL = ("Not sure which plugins you need, or whether GravityKit can do what you have in mind? "
+           '<a href="' + CALL + '">Book a free 1-on-1 call with me</a> and we’ll work it out together.')
 
 # Each email: (title, wait amount, wait unit, subject, preheader, body, utm_campaign)
 EMAILS = [
@@ -41,7 +44,8 @@ EMAILS = [
                '<a href="' + URL + '">Go back and complete your purchase!</a>')
         + para("If you need help with something, just reply to this email and we’ll respond 😊")
         + SIGN
-        + para("P.S. Do you know about our 30-day money-back guarantee? If you’re not happy with your purchase, "
+        + para("P.S. " + PS_CALL)
+        + para("P.P.S. Do you know about our 30-day money-back guarantee? If you’re not happy with your purchase, "
                "we will always refund you."),
         "abandoned-cart-1",
     ),
@@ -65,8 +69,7 @@ EMAILS = [
         ])
         + para('Ready to get started? <a href="' + URL + '">Go back and complete your purchase</a>.')
         + SIGN
-        + para('P.S. If you still have questions about our plugins, or you need help with something, '
-               '<a href="https://www.gravitykit.com/consultation/">book a free consultation with me</a>.'),
+        + para("P.S. " + PS_CALL),
         "abandoned-cart-2",
     ),
     (
@@ -83,7 +86,8 @@ EMAILS = [
         + raw(CART)
         + button("Complete Purchase and Save " + AMOUNT, URL)
         + para("Remember, this coupon expires in 48 hours—so don’t wait!")
-        + SIGN,
+        + SIGN
+        + para("P.S. " + PS_CALL),
         "abandoned-cart-5",
     ),
 ]
