@@ -174,6 +174,9 @@ add_action(
 			\CustomCRM\AbandonCart\Edd\EddCartTracking::registerEarlyHooks();
 			add_action( 'admin_init', [ \CustomCRM\AbandonCart\Edd\EddCartTracking::class, 'ensureIndexes' ] );
 
+			// Always on: it only acts while internal-only mode lists domains.
+			\CustomCRM\AbandonCart\Edd\CartEmailGuard::register();
+
 			if ( is_admin() ) {
 				( new \CustomCRM\AbandonCart\Edd\DiscountSettingsPage() )->register();
 			}
