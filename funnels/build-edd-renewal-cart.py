@@ -20,16 +20,9 @@ STATUS = "{{" + G + ".license_status|is due for renewal}}"
 ACCOUNT = "https://www.gravitykit.com/account/"
 
 
-def button(label, href=URL):
-    return (
-        '<p style="margin:24px 0;"><a class="fc_button" href="' + href + '" style="display:inline-block;background:#4f46e5;'
-        'color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;">'
-        + label + "</a></p>"
-    )
+from email_blocks import bullets, button, greeting, header, para, raw, signature
 
-
-def p(text):
-    return "<p>" + text + "</p>"
+SIGN = signature(["All the best,", "The GravityKit team"])
 
 
 # The first wait follows the "capture after" minutes in Abandoned Cart settings (30), so email 1
@@ -40,21 +33,22 @@ EMAILS = [
         30, "minutes",
         "Your GravityKit renewal is waiting",
         "Your license " + STATUS + ".",
-        p("Hi " + NAME + ",")
-        + p("You started renewing your license for " + PRODUCTS + " but didn’t finish checking out. "
-            "Your license " + STATUS + ".")
-        + button("Finish Renewing")
-        + p("An active license keeps these coming:")
-        + "<ul>"
-        + "<li>Plugin updates in your WordPress dashboard, including security and compatibility fixes</li>"
-        + "<li>Help from GravityKit support</li>"
-        + "<li>New features as we release them</li>"
-        + "</ul>"
-        + p("Here is what’s waiting at checkout:")
-        + CART
-        + p("If something went wrong at checkout, or you have a question about your renewal, just reply to this "
-            "email and we’ll help.")
-        + p("All the best,<br>The GravityKit team"),
+        header()
+        + greeting("Hi " + NAME + ",")
+        + para("You started renewing your license for " + PRODUCTS + " but didn’t finish checking out. "
+               "Your license " + STATUS + ".")
+        + button("Finish Renewing", URL)
+        + para("An active license keeps these coming:")
+        + bullets([
+            "Plugin updates in your WordPress dashboard, including security and compatibility fixes",
+            "Help from GravityKit support",
+            "New features as we release them",
+        ])
+        + para("Here is what’s waiting at checkout:")
+        + raw(CART)
+        + para("If something went wrong at checkout, or you have a question about your renewal, just reply to this "
+               "email and we’ll help.")
+        + SIGN,
         "renewal-cart-1",
     ),
     (
@@ -62,12 +56,13 @@ EMAILS = [
         2, "days",
         "Still planning to renew?",
         "Your renewal is still at checkout.",
-        p("Hi " + NAME + ",")
-        + p("Your renewal for " + PRODUCTS + " is still waiting at checkout. Your license " + STATUS + ".")
-        + button("Renew My License")
-        + p('You can see every license and when it expires on your <a href="' + ACCOUNT + '">Account page</a>.')
-        + p("If you’ve decided not to renew, we’d like to know why. Reply to this email; we read every reply.")
-        + p("All the best,<br>The GravityKit team"),
+        header()
+        + greeting("Hi " + NAME + ",")
+        + para("Your renewal for " + PRODUCTS + " is still waiting at checkout. Your license " + STATUS + ".")
+        + button("Renew My License", URL)
+        + para('You can see every license and when it expires on your <a href="' + ACCOUNT + '">Account page</a>.')
+        + para("If you’ve decided not to renew, we’d like to know why. Reply to this email; we read every reply.")
+        + SIGN,
         "renewal-cart-2",
     ),
 ]

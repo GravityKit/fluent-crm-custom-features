@@ -18,17 +18,12 @@ CODE = "{{" + G + ".recovery_discount_code}}"
 AMOUNT = "{{" + G + ".recovery_discount_amount}}"
 
 
-def button(label, href=URL):
-    return (
-        '<p style="margin:24px 0;"><a class="fc_button" href="' + href + '" style="display:inline-block;background:#4f46e5;'
-        'color:#ffffff;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;">'
-        + label + "</a></p>"
-    )
+from email_blocks import bullets, button, greeting, header, para, raw, signature
 
-
-def p(text):
-    return "<p>" + text + "</p>"
-
+SIGN = signature(["Zack Katz", "Founder, GravityKit"])
+CALL = "https://www.gravitykit.com/consultation/"
+PS_CALL = ("Not sure which plugins you need, or whether GravityKit can do what you have in mind? "
+           '<a href="' + CALL + '">Book a free 1-on-1 call with me</a> and we’ll work it out together.')
 
 # Each email: (title, wait amount, wait unit, subject, preheader, body, utm_campaign)
 EMAILS = [
@@ -37,19 +32,21 @@ EMAILS = [
         15, "minutes",
         "Complete your purchase—your website will thank you!",
         "You left powerful Gravity Forms add-ons in your cart 🛒",
-        p("Hey " + NAME + ",")
-        + p("Did you forget to check out? Your cart is saved, so you can pick up right where you left off. 🛒")
-        + p("If you need help with something, just reply to this email and we’ll respond 😊")
-        + button("Return and Complete Purchase")
-        + p("Here is what you left in your cart:")
-        + CART
-        + p("GravityKit gives you a toolbox of essential add-ons for Gravity Forms, so you can build powerful "
-            "applications on your website with a drag-and-drop interface. No coding knowledge required!")
-        + p("Ready to extend your website with powerful Gravity Forms add-ons? "
-            '<a href="' + URL + '">Go back and complete your purchase!</a>')
-        + p("All the best,<br>Zack from GravityKit")
-        + p("P.S. Do you know about our 30-day money-back guarantee? If you’re not happy with your purchase, "
-            "we will always refund you."),
+        header()
+        + greeting("Hey " + NAME + ",")
+        + para("Did you forget to check out? Your cart is saved, so you can pick up right where you left off. 🛒")
+        + para("Here is what you left in your cart:")
+        + raw(CART)
+        + button("Return and Complete Purchase", URL)
+        + para("GravityKit gives you a toolbox of essential add-ons for Gravity Forms, so you can build powerful "
+               "applications on your website with a drag-and-drop interface. No coding knowledge required!")
+        + para("Ready to extend your website with powerful Gravity Forms add-ons? "
+               '<a href="' + URL + '">Go back and complete your purchase!</a>')
+        + para("If you need help with something, just reply to this email and we’ll respond 😊")
+        + SIGN
+        + para("P.S. " + PS_CALL)
+        + para("P.P.S. Do you know about our 30-day money-back guarantee? If you’re not happy with your purchase, "
+               "we will always refund you."),
         "abandoned-cart-1",
     ),
     (
@@ -57,22 +54,22 @@ EMAILS = [
         1425, "minutes",
         "Why GravityKit is right for you 👌",
         "Your cart is saved—complete your purchase whenever you’re ready.",
-        p("Hey " + NAME + ",")
-        + p("You still have " + PRODUCTS + " in your cart. Go back to our site to complete checkout and get "
-            "powerful Gravity Forms add-ons working on your site.")
-        + p("With our 30-day money-back guarantee and no-hassle refund policy, you can buy with confidence.")
-        + button("Go Back and Complete Your Purchase")
-        + p("Oh, and just in case you missed this while browsing our website…")
-        + "<ul>"
-        + '<li>You can <a href="https://site.try.gravitykit.com/">view our live demos</a> and try our plugins before you buy.</li>'
-        + "<li>With GravityView, you can let users edit the entries they create.</li>"
-        + "<li>You can upgrade your license at any time from your Account page, and only pay the difference in price.</li>"
-        + '<li><a href="https://www.gravitykit.com/pricing/#faq">Get answers to more of your questions here</a>.</li>'
-        + "</ul>"
-        + p('Ready to get started? <a href="' + URL + '">Go back and complete your purchase</a>.')
-        + p("All the best,<br>Zack from GravityKit")
-        + p('P.S. If you still have questions about our plugins, or you need help with something, '
-            '<a href="https://www.gravitykit.com/consultation/">book a free consultation with me</a>.'),
+        header()
+        + greeting("Hey " + NAME + ",")
+        + para("You still have " + PRODUCTS + " in your cart. Go back to our site to complete checkout and get "
+               "powerful Gravity Forms add-ons working on your site.")
+        + para("With our 30-day money-back guarantee and no-hassle refund policy, you can buy with confidence.")
+        + button("Go Back and Complete Your Purchase", URL)
+        + para("Oh, and just in case you missed this while browsing our website…")
+        + bullets([
+            'You can <a href="https://site.try.gravitykit.com/">view our live demos</a> and try our plugins before you buy.',
+            "With GravityView, you can let users edit the entries they create.",
+            "You can upgrade your license at any time from your Account page, and only pay the difference in price.",
+            '<a href="https://www.gravitykit.com/pricing/#faq">Get answers to more of your questions here</a>.',
+        ])
+        + para('Ready to get started? <a href="' + URL + '">Go back and complete your purchase</a>.')
+        + SIGN
+        + para("P.S. " + PS_CALL),
         "abandoned-cart-2",
     ),
     (
@@ -80,14 +77,17 @@ EMAILS = [
         3, "days",
         "Get " + AMOUNT + " off your GravityKit order (expires soon)",
         "A special gift, just for you.",
-        p("Hey " + NAME + ", it’s Zack here with a special gift: a coupon for " + AMOUNT + " off your GravityKit order!")
-        + p("Use code <strong>" + CODE + "</strong> at checkout to take " + AMOUNT
-            + " off the items in your cart. It’s already applied when you use the button below, and it’s valid "
-            "for the next 48 hours only.")
-        + CART
-        + button("Complete Purchase and Save " + AMOUNT)
-        + p("Remember, this coupon expires in 48 hours—so don’t wait!")
-        + p("– Zack from GravityKit"),
+        header()
+        + greeting("Hey " + NAME + ",")
+        + para("It’s Zack here with a special gift: a coupon for " + AMOUNT + " off your GravityKit order!")
+        + para("Use code <strong>" + CODE + "</strong> at checkout to take " + AMOUNT
+               + " off the items in your cart. It’s already applied when you use the button below, and it’s valid "
+               "for the next 48 hours only.")
+        + raw(CART)
+        + button("Complete Purchase and Save " + AMOUNT, URL)
+        + para("Remember, this coupon expires in 48 hours—so don’t wait!")
+        + SIGN
+        + para("P.S. " + PS_CALL),
         "abandoned-cart-5",
     ),
 ]
