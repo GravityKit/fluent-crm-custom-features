@@ -529,6 +529,61 @@ katz.co",
 		update_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION, $domains_backup, true );
 	}
 
+	// 12d. Send-time guard: a non-team contact put straight into the cart automation (as an admin
+	// could by hand, skipping the drivers) never gets the email. Control: a team contact does.
+	$guard_backup = get_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION, null );
+	\CustomCRM\AbandonCart\Edd\AllowedDomains::save( 'gravitykit.com, katz.co' );
+	$guard_sent = [];
+	$capture    = function ( $simulated, $data ) use ( &$guard_sent ) {
+		$guard_sent[] = $data['to']['email'] ?? '';
+		return true;
+	};
+	add_filter( 'fluent_crm/is_simulated_mail', $capture, 1, 2 );
+	$cart_funnel_model = \FluentCrm\App\Models\Funnel::where( 'trigger_name', 'fc_ab_cart_simulation_edd' )->where( 'status', 'published' )->orderBy( 'id', 'DESC' )->first();
+	$walk = function ( string $address ) use ( $wpdb, $p, $cart_funnel_model ) {
+		$contact = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => $address, 'status' => 'subscribed' ] );
+		( new \FluentCrm\App\Services\Funnel\FunnelProcessor() )->startFunnelSequence( $cart_funnel_model, [], [], $contact );
+		for ( $i = 0; $i < 3; $i++ ) {
+			$wpdb->query( $wpdb->prepare( "UPDATE {$p}fc_funnel_subscribers SET next_execution_time = %s WHERE subscriber_id = %d AND funnel_id = %d AND status = 'active'", gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - 60 ), $contact->id, $cart_funnel_model->id ) );
+			( new \FluentCrm\App\Services\Funnel\FunnelProcessor() )->followUpSequenceActions();
+		}
+		return $wpdb->get_col( $wpdb->prepare( "SELECT ce.status FROM {$p}fc_campaign_emails ce JOIN {$p}fc_campaigns c ON c.id = ce.campaign_id WHERE ce.subscriber_id = %d AND c.parent_id = %d", $contact->id, $cart_funnel_model->id ) );
+	};
+	$outside_address  = t402_email( 'guardoutside' );
+	$outside_statuses = $walk( $outside_address );
+	t402_check(
+		'guard: non-team contact inside the automation gets no email',
+		$outside_statuses && ! in_array( 'sent', $outside_statuses, true ) && in_array( 'cancelled', $outside_statuses, true ) && ! in_array( $outside_address, $guard_sent, true ),
+		[ 'statuses' => $outside_statuses, 'sent_to' => $guard_sent ]
+	);
+	$team_address  = 't402-guardteam-' . $run . '@katz.co';
+	$emails[]      = $team_address;
+	$team_statuses = $walk( $team_address );
+	// FluentCRM sends once per request and an earlier section already sent, so "left alone" is the check.
+	t402_check( 'control: team contact\'s cart emails are left alone', $team_statuses && ! in_array( 'cancelled', $team_statuses, true ), [ 'statuses' => $team_statuses ] );
+
+	// Scope: with domains listed, emails outside the cart automations are never touched.
+	$scope_contact = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => t402_email( 'scopeoutside' ), 'status' => 'subscribed' ] );
+	$onboarding    = (int) $wpdb->get_var( "SELECT c.id FROM {$p}fc_campaigns c JOIN {$p}fc_funnels f ON f.id = c.parent_id WHERE c.type = 'funnel_email_campaign' AND f.title LIKE 'Onboarding:%' LIMIT 1" );
+	$newsletter    = (int) $wpdb->get_var( "SELECT id FROM {$p}fc_campaigns WHERE type = 'campaign' ORDER BY id DESC LIMIT 1" );
+	$scope_rows    = [];
+	foreach ( [ $onboarding, $newsletter ] as $campaign_id ) {
+		$wpdb->insert( "{$p}fc_campaign_emails", [ 'campaign_id' => $campaign_id, 'subscriber_id' => $scope_contact->id, 'email_address' => $scope_contact->email, 'status' => 'scheduled', 'scheduled_at' => current_time( 'mysql' ), 'email_type' => 'campaign', 'created_at' => current_time( 'mysql' ), 'updated_at' => current_time( 'mysql' ) ] );
+		$scope_rows[] = (int) $wpdb->insert_id;
+	}
+	\CustomCRM\AbandonCart\Edd\CartEmailGuard::cancelOutsideEmails();
+	$scope_statuses = $wpdb->get_col( 'SELECT status FROM ' . $p . 'fc_campaign_emails WHERE id IN (' . implode( ',', $scope_rows ) . ')' );
+	t402_check( 'scope: onboarding and newsletter emails to outside addresses are untouched', [ 'scheduled', 'scheduled' ] === $scope_statuses, $scope_statuses );
+	$wpdb->query( 'DELETE FROM ' . $p . 'fc_campaign_emails WHERE id IN (' . implode( ',', $scope_rows ) . ')' );
+	\CustomCRM\AbandonCart\Edd\AllowedDomains::save( '' );
+	t402_check( 'guard: does nothing when no domains are listed', 0 === \CustomCRM\AbandonCart\Edd\CartEmailGuard::cancelOutsideEmails() );
+	remove_filter( 'fluent_crm/is_simulated_mail', $capture, 1 );
+	if ( null === $guard_backup ) {
+		delete_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION );
+	} else {
+		update_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION, $guard_backup, true );
+	}
+
 	// 13. The new-purchase automation is 3 emails, with the code on day 4.
 	$funnel_json = json_decode( (string) file_get_contents( WP_PLUGIN_DIR . '/fluent-crm-custom-features/funnels/edd-abandoned-cart.json' ), true );
 	$steps       = array_map( function ( $s ) { return $s['action_name'] . ':' . ( $s['settings']['wait_time_amount'] ?? '' ) . ( $s['settings']['wait_time_unit'] ?? '' ); }, (array) ( $funnel_json['sequences'] ?? [] ) );
