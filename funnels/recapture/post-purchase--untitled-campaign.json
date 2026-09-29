@@ -1,0 +1,84 @@
+{
+ "title": "Recapture post-purchase: Untitled Campaign",
+ "trigger_name": "edd_update_payment_status",
+ "status": "draft",
+ "conditions": {
+  "update_type": "update",
+  "product_ids": [],
+  "product_categories": [],
+  "purchase_type": "all",
+  "run_multiple": "yes"
+ },
+ "settings": {
+  "subscription_status": "subscribed"
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (post purchase). Recapture IDs: 61ef236cdf228e00275c5879. Recapture had no conditions on this campaign, so it applies to every order."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 7 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "7",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Untitled Campaign",
+   "description": "Thanks for your recent purchase!",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Untitled Campaign",
+     "email_subject": "Thanks for your recent purchase!",
+     "email_pre_header": "Care to tell us your thoughts?",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">{{contact.first_name|Hey}}, thanks for your recent purchase!</h2>\n<p>We are grateful for your business and invite you to submit a review for the items that you purchased. We love to hear from our customers and we would appreciate your feedback!</p>\n<p><i>**If you have not received your order yet, please ignore this email.\n\n</i></p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"https://www.gravitykit.com/account/\" style=\"display:inline-block;background:#f7751f;color:#FFFFFF;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Review Your Products!</a></p>\n<h2 style=\"margin:16px 0 8px;\">Here's what you ordered...</h2>\n<p><em>(Your order)</em></p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"https://www.gravitykit.com/account/\" style=\"display:inline-block;background:#f7751f;color:#FFFFFF;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Review Your Products!</a></p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "untitled-campaign",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,84 @@
+{
+ "title": "Recapture winbacks: 60 Days After Last Order",
+ "trigger_name": "edd_update_payment_status",
+ "status": "draft",
+ "conditions": {
+  "update_type": "update",
+  "product_ids": [],
+  "product_categories": [],
+  "purchase_type": "all",
+  "run_multiple": "yes"
+ },
+ "settings": {
+  "subscription_status": "subscribed"
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (winbacks). Recapture IDs: 60bfcd92c332e400324d34e8. Recapture had no conditions on this campaign, so it applies to every order. The emails contain the placeholder text DISCOUNT_CODE; replace it with a real code before publishing."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 60 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "60",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "60 Days After Last Order",
+   "description": "We miss you!",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "60 Days After Last Order",
+     "email_subject": "We miss you!",
+     "email_pre_header": "It's been awhile...hasn't it?",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">{{contact.first_name|Hey}}, we miss you!</h2>\n<p>It's been awhile, hasn't it?  We were just saying the other day how much we wanted to see you again.<br><br>We've even gone and pulled this discount code out of the secret codes bin just for you.</p>\n<p><b>DISCOUNT_CODE</b></p>\n<p>What do you say?  It'll be like old times! Promise there's something worth checking out.</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"https://www.gravitykit.com/\" style=\"display:inline-block;background:#388E3C;color:#FFFFFF;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Shop Now</a></p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "60-days-after-last-order",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,84 @@
+{
+ "title": "Recapture post-purchase: From Jilt",
+ "trigger_name": "edd_update_payment_status",
+ "status": "draft",
+ "conditions": {
+  "update_type": "update",
+  "product_ids": [],
+  "product_categories": [],
+  "purchase_type": "all",
+  "run_multiple": "yes"
+ },
+ "settings": {
+  "subscription_status": "subscribed"
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (post purchase). Recapture IDs: 60bfcd92c332e400324d34e4. Recapture had no conditions on this campaign, so it applies to every order."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 5 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "5",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "[From Jilt] Post-Purchase NPS",
+   "description": "How are you feeling about your GravityView purchase?",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "[From Jilt] Post-Purchase NPS",
+     "email_subject": "How are you feeling about your GravityView purchase?",
+     "email_pre_header": "We would love to learn how you feel about the plugin you purchased from GravityView so we can make it better for you.",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">{{contact.first_name|Hey}}, thanks for your recent purchase!</h2>\n<p data-mce-style=\"font-size: 12px; line-height: 18px;\" class=\"\"><font face=\"Arial\">We would love to learn how you feel about GravityView so we can make it better for you! </font></p><p data-mce-style=\"font-size: 12px; line-height: 18px;\" class=\"\"><font face=\"Arial\"><br></font></p><p data-mce-style=\"font-size: 12px; line-height: 18px;\" class=\"\"><font face=\"Arial\">Please</font> share by clicking on a number below:</p>\n<table align=\"center\" border=\"0\" cellpadding=\"0\" style=\"background-color:#F2F4F8;border:1px solid #D9DBDE;border-radius:3px;font-family:arial,sans-serif;max-width:650px;\"><tbody><tr><td style=\"font-size:18px;padding:16px 16px 16px 16px;\"><span style=\"font-family:arial,sans-serif;\"><span style=\"font-size:18px;\">On a scale from 0-10, how likely are you to recommend GravityView plugins to a friend or colleague?</span></span></td></tr><tr><td style=\"padding:0 16px 16px 16px;\"><table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" style=\"text-align:center;\" width=\"100%\"><tbody><tr><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=0\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">0</a> </td><td style=\"width:6px\"> </td><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=1\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">1</a> </td><td style=\"width:6px\"> </td><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=2\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">2</a> </td><td style=\"width:6px\"> </td><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=3\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">3</a> </td><td style=\"width:6px\"> </td><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=4\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">4</a> </td><td style=\"width:6px\"> </td><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=5\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">5</a> </td><td style=\"width:6px\"> </td><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=6\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">6</a> </td><td style=\"width:6px\"> </td><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=7\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">7</a> </td><td style=\"width:6px\"> </td><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=8\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">8</a> </td><td style=\"width:6px\"> </td><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=9\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">9</a> </td><td style=\"width:6px\"> </td><td style=\"font-size:18px;width:40px;border-radius:3px;background:#FFFFFF;border:1px solid #FFFFFF;\"><a href=\"https://gravityview.co/nps/?email={{contact.email}}&score=10\" style=\"display:block;text-decoration:none;color:#666;background:#FFFFFF;line-height:40px;border-radius:3px;white-space:nowrap;\">10</a> </td></tr></tbody></table></td></tr><tr><td style=\"padding:4px 16px 4px 16px;\"><table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" style=\"color:#A5A5A5;font-size:13px;\" width=\"100%\"><tbody><tr><td align=\"left\"><span style=\"font-size:13px;\">Not at all likely</span></td><td align=\"right\"><span style=\"font-size:13px;\">Extremely likely</span></td></tr></tbody></table></td></tr></tbody></table>\n<p>{{contact.first_name|As always}}, <font face=\"Arial\">if you have any questions—about our plugins, this survey, or anything else!—please reply to this email. We’re here to help you.</font></p><p><font face=\"Arial\"><br></font></p><p><font face=\"Arial\">- Zack Katz, founder of GravityView</font></p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "from-jilt-post-purchase-nps",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}
