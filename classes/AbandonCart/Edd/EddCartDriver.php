@@ -83,7 +83,8 @@ class EddCartDriver extends AbstractCartDriver {
 	}
 
 	/**
-	 * Skip a cart when the shopper bought recently, or already got this sequence recently.
+	 * Skip a cart when its email is outside internal-only mode's domains, the shopper bought
+	 * recently, or already got this sequence recently.
 	 *
 	 * The first half uses FluentCRM's own `cool_off_period_days` setting. The second half is
 	 * Recapture's frequency cap: someone who abandons carts on two devices, or comes back every
@@ -93,7 +94,7 @@ class EddCartDriver extends AbstractCartDriver {
 	 * @param AbandonCartModel $cart
 	 */
 	public function isWithinCoolOffPeriod( AbandonCartModel $cart ) {
-		return $this->boughtRecently( $cart ) || $this->sentRecently( $cart );
+		return AllowedDomains::holdBack( $cart ) || $this->boughtRecently( $cart ) || $this->sentRecently( $cart );
 	}
 
 	/**

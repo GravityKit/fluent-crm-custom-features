@@ -407,7 +407,7 @@ try {
 		update_option( \CustomCRM\AbandonCart\Edd\PriorRecipients::OPTION, $prior_backup, false );
 	}
 
-	// 12b. Cart Discounts page: renders for an admin, saves edits, keeps the default profile.
+	// 12b. Cart Recovery page: renders for an admin, saves edits, keeps the default profile.
 	$discount_backup = get_option( \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount::OPTION, null );
 	$admin_id        = (int) ( get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] )[0] ?? 0 );
 	$previous_user   = get_current_user_id();
@@ -416,11 +416,13 @@ try {
 	ob_start();
 	$page->renderPage();
 	$html = (string) ob_get_clean();
-	t402_check( 'Cart Discounts page lists the profiles', false !== strpos( $html, 'name="profiles[pct40_3d][amount]"' ) && false !== strpos( $html, 'name="profiles[__new][slug]"' ) && false === strpos( $html, 'name="profiles[default][delete]"' ), strlen( $html ) );
+	t402_check( 'Cart Recovery page lists the profiles', false !== strpos( $html, 'name="profiles[pct40_3d][amount]"' ) && false !== strpos( $html, 'name="profiles[__new][slug]"' ) && false === strpos( $html, 'name="profiles[default][delete]"' ), strlen( $html ) );
 
 	$_POST    = [
 		'_wpnonce'         => wp_create_nonce( 'customcrm_cart_discounts_save' ),
 		'_wp_http_referer' => '/wp-admin/admin.php?page=fluentcrm-cart-discounts',
+		'allowed_domains'  => "gravitykit.com
+katz.co",
 		'profiles'         => [
 			'default'  => [ 'label' => 'Default', 'type' => 'percent', 'amount' => '35', 'expiry_hours' => '48', 'min_amount' => '0', 'prefix' => 'cart', 'delete' => '1' ],
 			'pct40_3d' => [ 'label' => '40% off, 3 days', 'type' => 'percent', 'amount' => '40', 'expiry_hours' => '72', 'min_amount' => '1', 'prefix' => 'CART' ],
@@ -475,11 +477,56 @@ try {
 		35.0 === $saved['default']['amount'] && 'CART' === $saved['default']['prefix'] && ! isset( $saved['pct20'] ) && isset( $saved['flat15'] ) && 'SAVE' === $saved['flat15']['prefix'] && 'flat' === $saved['flat15']['type'],
 		array_keys( $saved )
 	);
+	t402_check( 'page saves the allowed domains', [ 'gravitykit.com', 'katz.co' ] === \CustomCRM\AbandonCart\Edd\AllowedDomains::get(), \CustomCRM\AbandonCart\Edd\AllowedDomains::get() );
+	\CustomCRM\AbandonCart\Edd\AllowedDomains::save( '' );
 	t402_check( 'amount labels follow the saved profiles', '35%' === ( new \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount() )->getAmountLabel() && '$15.00' === ( new \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount() )->getAmountLabel( 'flat15' ) );
 	if ( null === $discount_backup ) {
 		delete_option( \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount::OPTION );
 	} else {
 		update_option( \CustomCRM\AbandonCart\Edd\EddRecoveryDiscount::OPTION, $discount_backup, false );
+	}
+
+	// 12c. Internal-only mode: only listed email domains reach an automation.
+	$domains_backup = get_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION, null );
+	$stored_domains = \CustomCRM\AbandonCart\Edd\AllowedDomains::save( "  @GravityKit.com, katz.co\n not_a_domain  gravitykit-t402.io " );
+	t402_check( 'domains parsed and cleaned', [ 'gravitykit.com', 'katz.co', 'gravitykit-t402.io' ] === $stored_domains, $stored_domains );
+	\CustomCRM\AbandonCart\Edd\AllowedDomains::save( 'gravitykit.com, katz.co' );
+	$domain_cases = [ 'zack@katz.co' => true, 'Casey@GravityKit.com' => true, 'a@mail.gravitykit.com' => true, 'x@notkatz.co' => false, 'x@katz.co.evil.com' => false, 'x@gmail.com' => false, 'no-at-sign' => false ];
+	$domain_wrong = [];
+	foreach ( $domain_cases as $address => $expected ) {
+		if ( \CustomCRM\AbandonCart\Edd\AllowedDomains::allows( $address ) !== $expected ) {
+			$domain_wrong[] = $address;
+		}
+	}
+	t402_check( 'allowed-domain matching (7 cases)', ! $domain_wrong, $domain_wrong );
+
+	$outside = t402_cart( t402_email( 'outside' ), 'draft' );
+	( new \FluentCrm\App\Modules\AbandonCart\AbandonCartRunner() )->runAbandonCart( AbandonCartModel::find( $outside->id ) );
+	\CustomCRM\AbandonCart\Edd\AllowedDomains::writeNotes();
+	$outside       = AbandonCartModel::find( $outside->id );
+	$outside_made  = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$p}fc_subscribers WHERE email = %s", $outside->email ) );
+	t402_check(
+		'outside domain: skipped with the reason, no contact created',
+		'skipped' === $outside->status && 0 === $outside_made && 0 === strpos( (string) $outside->note, 'Held back' ) && ! empty( $outside->cart['held_back'] ),
+		[ 'status' => $outside->status, 'note' => $outside->note, 'contacts' => $outside_made ]
+	);
+
+	$inside_email = 't402-inside-' . $run . '@katz.co';
+	$emails[]     = $inside_email;
+	$inside       = t402_cart( $inside_email, 'draft' );
+	( new \FluentCrm\App\Modules\AbandonCart\AbandonCartRunner() )->runAbandonCart( AbandonCartModel::find( $inside->id ) );
+	$inside = AbandonCartModel::find( $inside->id );
+	t402_check( 'control: allowed domain starts the automation', 'processing' === $inside->status && $inside->contact_id, [ 'status' => $inside->status, 'note' => $inside->note ] );
+
+	$renewal_outside = t402_cart( t402_email( 'renewoutside' ), 'draft', 'edd_renewal' );
+	t402_check( 'renewal carts are held back too', true === ( new EddRenewalCartDriver() )->isWithinCoolOffPeriod( $renewal_outside ) );
+
+	\CustomCRM\AbandonCart\Edd\AllowedDomains::save( '' );
+	t402_check( 'empty list: every domain allowed', \CustomCRM\AbandonCart\Edd\AllowedDomains::allows( 'x@gmail.com' ) );
+	if ( null === $domains_backup ) {
+		delete_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION );
+	} else {
+		update_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION, $domains_backup, true );
 	}
 
 	// 13. The new-purchase automation is 3 emails, with the code on day 4.

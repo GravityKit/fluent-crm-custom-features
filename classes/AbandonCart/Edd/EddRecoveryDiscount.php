@@ -10,7 +10,7 @@ use FluentCrm\Framework\Support\Arr;
  * use and reused by later emails so their expiry wording stays true.
  *
  * `default` backs `{{ab_cart_edd.recovery_discount_code}}`; named profiles back
- * `{{ab_cart_edd.discount.<profile>.code}}`. Profiles are edited under FluentCRM > Cart Discounts.
+ * `{{ab_cart_edd.discount.<profile>.code}}`. Profiles are edited under FluentCRM > Cart Recovery.
  */
 class EddRecoveryDiscount {
 
@@ -19,7 +19,7 @@ class EddRecoveryDiscount {
 	public const OPTION = 'customcrm_edd_ab_cart_discount_profiles';
 
 	/**
-	 * Stored on first read, then edited on the Cart Discounts page. The named profiles match
+	 * Stored on first read, then edited on the Cart Recovery page. The named profiles match
 	 * Recapture's unique-code discounts; its "40% Off (expires after 2 days)" became 3 days.
 	 */
 	private const STARTING_PROFILES = [
@@ -74,7 +74,7 @@ class EddRecoveryDiscount {
 	];
 
 	/**
-	 * Every profile, keyed by slug: the saved settings (Cart Discounts page), then the
+	 * Every profile, keyed by slug: the saved settings (Cart Recovery page), then the
 	 * `customcrm/edd_ab_cart/discount_profiles` filter.
 	 *
 	 * @return array<string,array{label: string, type: string, amount: float, expiry_hours: int, min_amount: float, prefix: string}>
@@ -87,7 +87,7 @@ class EddRecoveryDiscount {
 	}
 
 	/**
-	 * The profiles as saved on the Cart Discounts page. The first read stores the starting set.
+	 * The profiles as saved on the Cart Recovery page. The first read stores the starting set.
 	 *
 	 * @return array<string,array<string,mixed>>
 	 */

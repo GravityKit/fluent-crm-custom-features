@@ -50,15 +50,15 @@ class EddRenewalCartDriver extends EddCartDriver {
 	}
 
 	/**
-	 * Skip a renewal whose licenses were all renewed before the sequence could start, or a contact
-	 * who already got this sequence recently.
+	 * Skip a renewal whose email is outside internal-only mode's domains, whose licenses were all
+	 * renewed before the sequence could start, or whose contact already got this sequence recently.
 	 *
 	 * A recent unrelated purchase does not skip it: the renewal is still outstanding.
 	 *
 	 * @param AbandonCartModel $cart
 	 */
 	public function isWithinCoolOffPeriod( AbandonCartModel $cart ) {
-		return $this->allLicensesRenewed( $cart ) || $this->sentRecently( $cart );
+		return AllowedDomains::holdBack( $cart ) || $this->allLicensesRenewed( $cart ) || $this->sentRecently( $cart );
 	}
 
 	/**
