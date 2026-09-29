@@ -1,0 +1,84 @@
+{
+ "title": "Recapture: \"Need advice or more information?\" Follow-up Round 2",
+ "trigger_name": "fc_ab_cart_simulation_edd",
+ "status": "draft",
+ "conditions": {
+  "cart_conditions": [
+   []
+  ],
+  "active_once": "no",
+  "require_subscribed": "no"
+ },
+ "settings": {
+  "priority": 5
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (abandoned carts). Recapture IDs: 60bfcd92c332e400324d34e1."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 1 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "1",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "\"Need advice or more information?\" Follow-up Round 2",
+   "description": "Need any help?",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "\"Need advice or more information?\" Follow-up Round 2",
+     "email_subject": "Need any help?",
+     "email_pre_header": "",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Need advice or more information?</h2>\n<p>We noticed that you hadn't gotten a chance to complete your order yet. Do you have any questions or concerns? <b>Please let us know by responding to this email.</b></p><p><br></p><p>In case you were looking to pick up where you left off, here's a reminder of what you were thinking about getting...</p>\n{{ab_cart_edd.cart_items_table}}\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#388E3C;color:#FFFFFF;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">View My Cart</a></p>\n<p>We’re here to make your website powerful and your job easy. Please reply if you have any questions! </p><p><br></p><p>Thanks,</p><p>Zack with GravityView</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "need-advice-or-more-information-follow-up-round-2",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

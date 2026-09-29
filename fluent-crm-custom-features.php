@@ -140,6 +140,57 @@ add_action(
 	99
 );
 
+/**
+ * Whether FluentCRM's abandoned-cart driver API (FluentCRM 3.2+) is available.
+ *
+ * The EDD cart driver extends both classes, which are resolved at class-load time, so loading it
+ * against an older FluentCRM would fatal on every request.
+ */
+function customcrm_cart_drivers_are_available() {
+	return class_exists( '\\FluentCrm\\App\\Modules\\AbandonCart\\Drivers\\AbstractCartDriver' )
+		&& class_exists( '\\FluentCrm\\App\\Modules\\AbandonCart\\Drivers\\FluentCart\\FluentCartAutomationTrigger' );
+}
+
+// EDD provider for FluentCRM's abandoned carts. FluentCRM fires this on init priority 90, before
+// the priority-99 callback above runs, so it cannot be registered from there. Nothing tracks or
+// sends until FluentCRM's experimental "Abandoned Cart" setting and an EDD provider are enabled.
+add_action(
+	'fluent_crm/abandon_cart_register_drivers',
+	function () {
+		if ( ! customcrm_cart_drivers_are_available() || ! function_exists( 'EDD' ) ) {
+			return;
+		}
+
+		\FluentCrm\App\Modules\AbandonCart\Drivers\DriverManager::register( new \CustomCRM\AbandonCart\Edd\EddCartDriver() );
+		// License renewals left at checkout get their own provider, trigger and automation.
+		\FluentCrm\App\Modules\AbandonCart\Drivers\DriverManager::register( new \CustomCRM\AbandonCart\Edd\EddRenewalCartDriver() );
+	}
+);
+
+add_action(
+	'plugins_loaded',
+	function () {
+		if ( customcrm_cart_drivers_are_available() && function_exists( 'EDD' ) ) {
+			\CustomCRM\AbandonCart\Edd\EddCartTracking::registerEarlyHooks();
+			add_action( 'admin_init', [ \CustomCRM\AbandonCart\Edd\EddCartTracking::class, 'ensureIndexes' ] );
+
+			if ( is_admin() ) {
+				( new \CustomCRM\AbandonCart\Edd\DiscountSettingsPage() )->register();
+			}
+
+			if ( defined( 'WP_CLI' ) && WP_CLI ) {
+				\WP_CLI::add_command( 'customcrm cart prior-recipients', \CustomCRM\AbandonCart\Edd\PriorRecipientsCommand::class );
+			}
+		}
+
+		// Filter to false to send every email as FluentCRM schedules it.
+		if ( defined( 'FLUENTCRM' ) && apply_filters( 'customcrm/email_gate/enabled', true ) ) {
+			\CustomCRM\Email\CollisionGate::register();
+		}
+	},
+	20
+);
+
 // Hook to register custom REST API endpoints.
 add_action( 'rest_api_init', function () {
 	register_rest_route( 'fluent-crm/v1', '/list-growth', [

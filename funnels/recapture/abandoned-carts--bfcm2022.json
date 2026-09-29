@@ -1,0 +1,84 @@
+{
+ "title": "Recapture: BFCM2022",
+ "trigger_name": "fc_ab_cart_simulation_edd",
+ "status": "draft",
+ "conditions": {
+  "cart_conditions": [
+   []
+  ],
+  "active_once": "no",
+  "require_subscribed": "no"
+ },
+ "settings": {
+  "priority": 5
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (abandoned carts). Recapture IDs: 6373b64ca98243003337e432."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 15 minutes",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "15",
+    "wait_time_unit": "minutes",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "[BFCM2022] Complete your purchase; your website will thank you!",
+   "description": "Complete your purchase; your website will thank you!",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "[BFCM2022] Complete your purchase; your website will thank you!",
+     "email_subject": "Complete your purchase; your website will thank you!",
+     "email_pre_header": "",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Hey {{contact.first_name|there}},</h2>\n<p>Your still have {{ab_cart_edd.first_product_name}} in your cart!</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#4D9BBE;color:#FFFFFF;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Complete your purchase now</a></p>\n<p>We are proud of our simple <b>30-day money-back guarantee.</b> If you need any assistance, please reply. Our dedicated customer suppor team will be there to help!</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "bfcm2022-complete-your-purchase-your-website-will-thank-you",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,212 @@
+{
+ "title": "Recapture: Final",
+ "trigger_name": "fc_ab_cart_simulation_edd",
+ "status": "draft",
+ "conditions": {
+  "cart_conditions": [
+   []
+  ],
+  "active_once": "no",
+  "require_subscribed": "no"
+ },
+ "settings": {
+  "priority": 5
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (abandoned carts). Recapture IDs: 6391da006df9a000287e9adb, 6391dc0d678a3c0028bd861a, 6391e12c678a3c0028bd865c."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 15 minutes",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "15",
+    "wait_time_unit": "minutes",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "[Final] Email #1 (close sale, offer help)",
+   "description": "Complete your purchase—your website will thank you.",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "[Final] Email #1 (close sale, offer help)",
+     "email_subject": "Complete your purchase—your website will thank you.",
+     "email_pre_header": "You almost left without these powerful Gravity Forms add-ons.",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Hey {{contact.first_name|there}}</h2>\n<p>Did you forget to check out? We temporarily reserved the items in your cart—go back to our site and <a href=\"##ab_cart_edd.recovery_url##\" target=\"_blank\" rel=\"noopener noreferrer\">complete your purchase</a> before it expires! 🛒</p><p><br></p><p>If you need help with something, just reply to this email and we’ll respond 😊</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#f7751f;color:#FFFFFF;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Return and complete purchase</a></p>\n<h2 style=\"margin:16px 0 8px;\">Here is what you left in your cart:</h2>\n{{ab_cart_edd.cart_items_table}}\n<p>GravityKit provides a toolbox of essential add-ons for Gravity Forms, allowing you to enhance your workflow and build powerful applications on your website using a drag-and-drop interface. No coding knowledge required! </p><p><br></p><p>Ready to extend your website with powerful Gravity Forms add-ons? Go back and <a href=\"##ab_cart_edd.recovery_url##\" target=\"_blank\" rel=\"noopener noreferrer\">complete your purchase</a>!</p><p><br></p><p>All the best,</p><p>Zack from GravityKit</p>\n<p>P.S. Do you know about our 30-day money-back guarantee? If you’re not happy with your purchase, we will always refund you.</p>\n<hr style=\"border:none;border-top:1px solid #e5e7eb;margin:24px 0;\">",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "email1",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": 3,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 1425 minutes",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "1425",
+    "wait_time_unit": "minutes",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 4,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "[Final] Email #2 (close sale, answer FAQs)",
+   "description": "Still thinking about it? We’re holding your cart",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "[Final] Email #2 (close sale, answer FAQs)",
+     "email_subject": "Still thinking about it? We’re holding your cart",
+     "email_pre_header": "You need to know this before you make up your mind",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Hey {{contact.first_name|there}}</h2>\n<p>You still have ​{{ab_cart_edd.first_product_name}} in your cart. Go back to our site to <a href=\"##ab_cart_edd.recovery_url##\" target=\"_blank\" rel=\"noopener noreferrer\">complete the checkout process</a>, and get access to powerful Gravity Forms add-ons. <i>Quick, before your cart expires!</i></p><p><br></p><p>With our 30-day money-back guarantee and no-hassle refund policy, you can rest assured that you’re making the right choice.</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"##ab_cart_edd.recovery_url##\" style=\"display:inline-block;background:#f7751f;color:#FFFFFF;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Go back and complete your purchase</a></p>\n<p>Oh, and just in case you missed this important info while browsing our website…</p><ul><li aria-level=\"1\"><p role=\"presentation\">You can view our live demos and <a href=\"https://site.try.gravitykit.com\" target=\"_blank\" rel=\"noopener noreferrer\">try out all of our plugins for free</a> before you buy!</p></li><li aria-level=\"1\"><p role=\"presentation\">With GravityView, you can allow users to edit the entries they create.</p></li><li aria-level=\"1\"><p role=\"presentation\">You can upgrade your license at any time for just the difference in price (we offer a simple upgrade process through your Account page).</p></li><li aria-level=\"1\"><p role=\"presentation\">Get answers to more of your questions <a href=\"https://www.gravitykit.com/pricing/#faq\" target=\"_blank\" rel=\"noopener noreferrer\">here</a>.</p></li></ul><p class=\"\">Ready to get started? Go back and <a href=\"##ab_cart_edd.recovery_url##\" target=\"_blank\" rel=\"noopener noreferrer\">complete your purchase</a>.</p><p class=\"\"><br></p><p class=\"\">All the best,</p><p class=\"\">Zack from GravityKit</p>\n<p>P.S. If you still have questions about our plugins, or you need help with something, reply to this email and we’ll respond.</p>\n<hr style=\"border:none;border-top:1px solid #e5e7eb;margin:24px 0;\">",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "email2",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": 5,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 2 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "2",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 6,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "[Final] Email #4 (benefits + social proof)",
+   "description": "Learn from Pieroth’s success story",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "[Final] Email #4 (benefits + social proof)",
+     "email_subject": "Learn from Pieroth’s success story",
+     "email_pre_header": "How this company saved money and time with GravityKit",
+     "email_body": "<p>Pieroth came to GravityKit seeking out a solution that would help them organize their eCommerce product catalogs and edit the data when required. </p><p><br></p><p>As they were already familiar with Gravity Forms, they started looking for a tool that could help them harness their form data in creative ways.</p>\n<p><img src=\"https://stockpile.recapture.io/uploads/3c559d67d7da02e2e26dcede2b25bec9c0eb241a.png\" alt=\"\" style=\"max-width:100%;height:auto;\"></p>\n<p>“<i>I just started searching for a tool that would let us display Gravity Forms data on the front end and I quickly found GravityView. It was perfect, just what we needed</i>.”</p><p>(Nicolas Johansson, Digital Manager at Pieroth)</p>\n<p><br></p><p><a href=\"https://www.gravitykit.com/product-information-management-system/\" target=\"_blank\" rel=\"noopener noreferrer\">Read Pieroth’s amazing success story</a>, and find out…</p><ul><li aria-level=\"1\"><p role=\"presentation\">Why GravityKit is the perfect solution for mid-sized companies that don’t have a huge amount of IT resources</p></li><li aria-level=\"1\"><p role=\"presentation\">How GravityView’s intuitive interface makes it easy to display and update Gravity Forms entries with little technical knowledge</p></li><li aria-level=\"1\"><p role=\"presentation\">How GravityKit allows you to manage and transfer data on WordPress for a fraction of the cost of most SaaS solutions.</p></li></ul><p>We just LOVE this story. <a href=\"https://www.gravitykit.com/product-information-management-system/\" target=\"_blank\" rel=\"noopener noreferrer\">Give it a read</a>—I think you will too.</p><p><br></p><p>All the best,</p><p>Zack from GravityKit</p>\n<hr style=\"border:none;border-top:1px solid #e5e7eb;margin:24px 0;\">",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "email4",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

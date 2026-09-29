@@ -1,0 +1,84 @@
+{
+ "title": "Recapture winbacks: 30 Days - GravityView Core",
+ "trigger_name": "edd_update_payment_status",
+ "status": "draft",
+ "conditions": {
+  "update_type": "update",
+  "product_ids": [],
+  "product_categories": [],
+  "purchase_type": "all",
+  "run_multiple": "yes"
+ },
+ "settings": {
+  "subscription_status": "subscribed"
+ },
+ "sticky_note": {
+  "content": "Converted from Recapture (winbacks). Recapture IDs: 60bfcd92c332e400324d34e7. Recapture had no conditions on this campaign, so it applies to every order."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 30 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "30",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "30 Days - GravityView Core",
+   "description": "Take GravityView to the next level 🚀",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "30 Days - GravityView Core",
+     "email_subject": "Take GravityView to the next level 🚀",
+     "email_pre_header": "Enhance GravityView with premium extensions.",
+     "email_body": "<h2 style=\"margin:16px 0 8px;\">Hey {{contact.first_name|Hey}},</h2>\n<p>I hope you’ve been enjoying GravityView!</p><p><br></p><p>I wanted to give you a quick heads up on what’s included in our <a href=\"https://www.gravitykit.com/pricing/?focus=core-extensions\" target=\"_blank\" rel=\"noopener noreferrer\">GravityView + Extensions license</a> and why you should consider upgrading. </p><ul><li aria-level=\"1\"><p role=\"presentation\"><b>Access to </b><b><i>ALL</i> GravityView premium extensions<br></b>Our powerful suite of <a href=\"https://www.gravitykit.com/extensions/#premium-extensions\" target=\"_blank\" rel=\"noopener noreferrer\">premium extensions</a> allows you to do so much more with GravityView.</p></li></ul><ul><li aria-level=\"1\"><p role=\"presentation\"><b>Advanced filtering capabilities<br></b>Limit entry visibility to the user who created them. Advanced Filters gives you finer control over which entries display in a View.</p></li></ul><ul><li aria-level=\"1\"><p role=\"presentation\"><b>DataTables support<br></b>Display Gravity Forms data in a live-updating table with extended sorting, filtering and exporting capabilities.</p></li></ul><p>If you’re interested in upgrading or just want to find out more, you can learn more about <i>GravityView + Extensions</i> here:</p>\n<p style=\"margin:24px 0;\"><a class=\"fc_button\" href=\"https://www.gravitykit.com/pricing/?focus=core-extensions\" style=\"display:inline-block;background:#F7751F;color:#FFFFFF;padding:12px 22px;border-radius:6px;font-weight:600;text-decoration:none;\">Go to GravityView + Extensions</a></p>\n<p>Either way, let me know if you have any questions, and thanks again for being part of our community! 🙌</p><p><br></p><p>All the best,</p><p><br></p><p>Zack Katz</p><p>Founder of GravityKit</p><p><br></p><p>P.S. You can also upgrade to our <a href=\"https://www.gravitykit.com/pricing/?focus=all-access\" target=\"_blank\" rel=\"noopener noreferrer\">All Access Pass</a> and get our full suite of Gravity Forms add-ons!</p>",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "30-days-gravityview-core",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}
