@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HTTP checks for FluentCRM > Cart Discounts on gkclone, as an admin, a subscriber and a logged-out visitor.
+# HTTP checks for FluentCRM > Cart Recovery on gkclone, as an admin, a subscriber and a logged-out visitor.
 #
 #   GKCLONE_CLI=<wp-env cli container> tests/gkclone/discount-page-http-checks.sh
 #
@@ -83,7 +83,7 @@ PY
 
 # 6. Rendered page escapes stored values.
 curl -s -o "$S/page2.html" -H "Cookie: $ADMIN" "$PAGE&updated=1"
-check "saved notice shown" "$(grep -q 'Discounts saved' "$S/page2.html" && echo 1)" ""
+check "saved notice shown" "$(grep -q 'Settings saved' "$S/page2.html" && echo 1)" ""
 check "no raw script or onerror in the page" "$(! grep -qiE '<script>alert|onerror=alert' "$S/page2.html" && echo 1)" "$(grep -oiE '.{20}(script>alert|onerror=alert).{20}' "$S/page2.html" | head -2)"
 
 # 7. PHP warnings or errors logged during these requests.

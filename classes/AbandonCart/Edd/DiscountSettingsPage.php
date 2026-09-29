@@ -3,7 +3,8 @@
 namespace CustomCRM\AbandonCart\Edd;
 
 /**
- * FluentCRM > Cart Discounts: edits the recovery discount profiles that abandoned-cart emails use.
+ * FluentCRM > Cart Recovery: who gets cart emails (internal-only mode), and the recovery discount
+ * profiles those emails use.
  */
 class DiscountSettingsPage {
 
@@ -27,8 +28,8 @@ class DiscountSettingsPage {
 	public function addMenuPage(): void {
 		add_submenu_page(
 			'fluentcrm-admin',
-			esc_html__( 'Cart Recovery Discounts', 'fluent-crm-custom-features' ),
-			esc_html__( 'Cart Discounts', 'fluent-crm-custom-features' ),
+			esc_html__( 'Cart Recovery', 'fluent-crm-custom-features' ),
+			esc_html__( 'Cart Recovery', 'fluent-crm-custom-features' ),
 			'manage_options',
 			self::PAGE_SLUG,
 			[ $this, 'renderPage' ]
@@ -53,6 +54,9 @@ class DiscountSettingsPage {
 		$posted = isset( $_POST['profiles'] ) ? (array) wp_unslash( $_POST['profiles'] ) : [];
 
 		EddRecoveryDiscount::saveProfiles( self::profilesFromForm( $posted ) );
+
+		$domains = isset( $_POST['allowed_domains'] ) && is_string( $_POST['allowed_domains'] ) ? sanitize_textarea_field( wp_unslash( $_POST['allowed_domains'] ) ) : '';
+		AllowedDomains::save( $domains );
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -114,14 +118,29 @@ class DiscountSettingsPage {
 
 		?>
 		<div class="wrap">
-			<h1><?php esc_html_e( 'Cart Recovery Discounts', 'fluent-crm-custom-features' ); ?></h1>
+			<h1><?php esc_html_e( 'Cart Recovery', 'fluent-crm-custom-features' ); ?></h1>
 
 			<?php if ( $updated ) : ?>
 				<div class="notice notice-success is-dismissible" role="alert">
-					<p><?php esc_html_e( 'Discounts saved.', 'fluent-crm-custom-features' ); ?></p>
+					<p><?php esc_html_e( 'Settings saved.', 'fluent-crm-custom-features' ); ?></p>
 				</div>
 			<?php endif; ?>
 
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( self::NONCE ); ?>
+				<input type="hidden" name="action" value="<?php echo esc_attr( self::ACTION ); ?>">
+
+				<h2><?php esc_html_e( 'Who gets cart emails', 'fluent-crm-custom-features' ); ?></h2>
+				<p>
+					<label for="customcrm-allowed-domains"><?php esc_html_e( 'Only send cart emails to these email domains (one per line). Leave empty to send to every shopper.', 'fluent-crm-custom-features' ); ?></label>
+				</p>
+				<textarea id="customcrm-allowed-domains" name="allowed_domains" rows="3" class="large-text code" placeholder="gravitykit.com"><?php echo esc_textarea( implode( "\n", AllowedDomains::get() ) ); ?></textarea>
+				<p class="description"><?php esc_html_e( 'Carts from other domains are still recorded but skipped: no contact is created and no email is sent. Staff roles are never tracked, so test while logged out or with a customer account.', 'fluent-crm-custom-features' ); ?></p>
+				<?php if ( AllowedDomains::get() ) : ?>
+					<div class="notice notice-warning inline"><p><?php esc_html_e( 'Internal-only mode is on: customers are not getting cart emails.', 'fluent-crm-custom-features' ); ?></p></div>
+				<?php endif; ?>
+
+				<h2><?php esc_html_e( 'Discounts', 'fluent-crm-custom-features' ); ?></h2>
 			<p>
 				<?php
 				printf(
@@ -133,10 +152,6 @@ class DiscountSettingsPage {
 				?>
 			</p>
 			<p><?php esc_html_e( 'Changes apply to codes created from now on. Before deleting a profile, check that no automation email still uses its smart codes.', 'fluent-crm-custom-features' ); ?></p>
-
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<?php wp_nonce_field( self::NONCE ); ?>
-				<input type="hidden" name="action" value="<?php echo esc_attr( self::ACTION ); ?>">
 
 				<table class="widefat striped">
 					<thead>
@@ -159,7 +174,7 @@ class DiscountSettingsPage {
 					</tbody>
 				</table>
 
-				<?php submit_button( __( 'Save discounts', 'fluent-crm-custom-features' ) ); ?>
+				<?php submit_button( __( 'Save', 'fluent-crm-custom-features' ) ); ?>
 			</form>
 		</div>
 		<?php
