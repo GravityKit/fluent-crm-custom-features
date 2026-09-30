@@ -966,18 +966,74 @@ katz.co",
 	t402_check( 'code: current_plan and new_plan', $plan_name( $download_id, 1 ) === $codes_now['current_plan'] && $plan_name( $download_id, 2 ) === $codes_now['new_plan'], [ $codes_now['current_plan'], $codes_now['new_plan'] ] );
 	t402_check( 'code: full_price is the new plan\'s regular price', $fmt( $full ) === $codes_now['full_price'], [ $codes_now['full_price'], $full ] );
 	t402_check( 'code: today_price is SL\'s prorated cost now, below the full price', $fmt( $today ) === $codes_now['today_price'] && $today > 0 && $today < $full, [ $codes_now['today_price'], $today ] );
-	t402_check( 'code: credit is full minus today', $fmt( $full - $today ) === $codes_now['credit'], [ $codes_now['credit'], $full - $today ] );
-	t402_check(
-		'code: price_breakdown has the three lines',
-		false !== strpos( $codes_now['breakdown'], $plan_name( $download_id, 2 ) . ': ' . $fmt( $full ) ) && false !== strpos( $codes_now['breakdown'], 'Credit for your current plan: −' . $fmt( $full - $today ) ) && false !== strpos( $codes_now['breakdown'], 'You pay today: ' . $fmt( $today ) ),
-		$codes_now['breakdown']
-	);
+
+	// The breakdown's three lines, as label and cents, read from the rendered HTML.
+	$parse_breakdown = function ( string $html ): array {
+		$rows = [];
+		foreach ( explode( '<br>', $html ) as $row ) {
+			$text = trim( html_entity_decode( wp_strip_all_tags( $row ), ENT_QUOTES, 'UTF-8' ) );
+			if ( preg_match( '/^(.*): (−?)\$([0-9,]+)\.([0-9]{2})$/u', $text, $m ) ) {
+				$rows[] = [ 'label' => $m[1], 'cents' => (int) str_replace( ',', '', $m[3] ) * 100 + (int) $m[4], 'text' => $text ];
+			}
+		}
+		return $rows;
+	};
+	$breakdown_examples = [];
+	// Line 1 − line 2 = line 3 to the cent, line 3 = SL's cost, and the labels for the case.
+	$check_breakdown = function ( string $case, AbandonCartModel $cart, string $line1_label, string $credit_label, float $sl_cost ) use ( $code, $parse_breakdown, &$breakdown_examples ) {
+		$html  = $code( $cart, 'price_breakdown' );
+		$rows  = $parse_breakdown( $html );
+		$adds  = 3 === count( $rows ) && $rows[0]['cents'] - $rows[1]['cents'] === $rows[2]['cents'];
+		$is_sl = 3 === count( $rows ) && $rows[2]['cents'] === (int) round( $sl_cost * 100 );
+		$named = 3 === count( $rows ) && $line1_label === $rows[0]['label'] && $credit_label === $rows[1]['label'] && 'You pay today' === $rows[2]['label'];
+		$breakdown_examples[ $case ] = wp_list_pluck( $rows, 'text' );
+		t402_check( "breakdown ({$case}): line 1 − line 2 = line 3 to the cent", $adds, $rows );
+		t402_check( "breakdown ({$case}): line 3 is SL's cost", $is_sl, [ 'rows' => $rows, 'sl_cost' => $sl_cost ] );
+		t402_check( "breakdown ({$case}): labels", $named, [ 'got' => wp_list_pluck( $rows, 'label' ), 'expected' => [ $line1_label, $credit_label ] ] );
+		return $rows;
+	};
+	$current_label = $plan_name( $download_id, 1 );
+
+	// Time-based, same-term target: the new plan until the current renewal date.
+	$rows_term = $check_breakdown( 'time-based, same term', $code_cart, $plan_name( $download_id, 2 ) . ' until ' . date_i18n( $date_fmt, (int) $license->expiration ), 'Credit for the unused time on ' . $current_label, $today );
+	// Same term length, so SL's credit and the new plan's share are the same fraction of each price.
+	$same_share = 3 === count( $rows_term ) && abs( $rows_term[1]['cents'] * $full - $rows_term[0]['cents'] * 99 ) <= 3 * $full;
+	t402_check( 'breakdown (time-based, same term): line 1 is the new plan\'s share of the term and the credit is below the $99 paid', $same_share && $rows_term[0]['cents'] < 17900 && $rows_term[1]['cents'] > 0 && $rows_term[1]['cents'] < 9900, $rows_term );
+	t402_check( 'code: credit matches line 2 of the breakdown', 3 === count( $rows_term ) && '−' . html_entity_decode( $codes_now['credit'], ENT_QUOTES, 'UTF-8' ) === substr( $rows_term[1]['text'], strrpos( $rows_term[1]['text'], ': ' ) + 2 ), [ $codes_now['credit'], $rows_term[1]['text'] ?? null ] );
 	t402_check( 'code: price_change_line says a term upgrade gets lower each day', false !== strpos( $codes_now['change'], 'lower each day' ), $codes_now['change'] );
 	t402_check( 'code: renewal_line, same term: the date stays', 'Your renewal date stays ' . date_i18n( $date_fmt, (int) $license->expiration ) . '.' === $codes_now['renewal'], $codes_now['renewal'] );
 	t402_check( 'code: renewal_soon_line is empty 200 days out', '' === $codes_now['soon'], $codes_now['soon'] );
 	t402_check( 'code: new_plan_extras for a bigger tier of the same product', false !== strpos( $codes_now['extras'], '<li>Up to 3 Sites, instead of Single Site</li>' ), $codes_now['extras'] );
 
 	$life_cart = $make( 'codeslife', 'processing', [ 'upgrade_id' => $life_id ] );
+	// Time-based, lifetime target: the full lifetime price, less the credit for the unused time.
+	$rows_life = $check_breakdown( 'time-based, lifetime target', $life_cart, $plan_name( $download_id, 5 ), 'Credit for the unused time on ' . $current_label, (float) edd_sl_get_license_upgrade_cost( (int) $license->ID, $life_id ) );
+	t402_check( 'breakdown (time-based, lifetime target): line 1 is the full $399 and the credit is below the $99 paid', 3 === count( $rows_life ) && 39900 === $rows_life[0]['cents'] && $rows_life[1]['cents'] > 0 && $rows_life[1]['cents'] < 9900, $rows_life );
+
+	// Cost-based fallback: a license bought an hour ago is inside SL's one-day minimum.
+	$fresh_order = t402_order( t402_email( 'freshowner' ), $download_id, 1 );
+	$fresh       = edd_software_licensing()->get_license_by_purchase( $fresh_order, $download_id );
+	if ( ! $fresh ) {
+		( new EDD_SL_License() )->create( $download_id, $fresh_order, 1, 0 );
+		$fresh = edd_software_licensing()->get_license_by_purchase( $fresh_order, $download_id );
+	}
+	$licenses[]        = (int) $fresh->ID;
+	$midnight          = strtotime( 'today midnight' );
+	$term_seconds      = strtotime( $fresh->license_length(), $midnight ) - $midnight;
+	$fresh->expiration = time() - (int) ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS ) + $term_seconds - HOUR_IN_SECONDS;
+	$fresh             = edd_software_licensing()->get_license( $fresh->ID );
+	$fresh_cart        = $make( 'codesfresh', 'processing', [ 'license_id' => (int) $fresh->ID ] );
+	$fresh_cost        = (float) edd_sl_get_license_upgrade_cost( (int) $fresh->ID, $tier_id );
+	$rows_fresh        = $check_breakdown( 'cost-based, bought within the minimum time', $fresh_cart, $plan_name( $download_id, 2 ), 'Credit for ' . $current_label, $fresh_cost );
+	t402_check( 'breakdown (cost-based, minimum time): $179.00 − $99.00 = $80.00', 3 === count( $rows_fresh ) && [ 17900, 9900, 8000 ] === wp_list_pluck( $rows_fresh, 'cents' ), $rows_fresh );
+
+	// Cost-based fallback: the proration method switched to cost-based.
+	$cost_based = function () { return 'cost-based'; };
+	add_filter( 'edd_sl_proration_method', $cost_based );
+	$method_cost = (float) edd_sl_get_license_upgrade_cost( (int) $license->ID, $tier_id );
+	$rows_method = $check_breakdown( 'cost-based method', $code_cart, $plan_name( $download_id, 2 ), 'Credit for ' . $current_label, $method_cost );
+	remove_filter( 'edd_sl_proration_method', $cost_based );
+	t402_check( 'breakdown (cost-based method): $179.00 − $99.00 = $80.00', 3 === count( $rows_method ) && [ 17900, 9900, 8000 ] === wp_list_pluck( $rows_method, 'cents' ), $rows_method );
 	t402_check( 'code: renewal_line, lifetime plan: no more renewals', 'Your new plan is a lifetime license, so there are no more renewals.' === $code( $life_cart, 'renewal_line' ), $code( $life_cart, 'renewal_line' ) );
 	t402_check( 'code: price_change_line says a lifetime upgrade goes up each day', false !== strpos( $code( $life_cart, 'price_change_line' ), 'goes up' ), $code( $life_cart, 'price_change_line' ) );
 
@@ -1026,7 +1082,7 @@ katz.co",
 	}
 	// T402_DUMP=1 saves the rendered emails to /tmp/t402-rendered.json for reading.
 	if ( getenv( 'T402_DUMP' ) ) {
-		file_put_contents( '/tmp/t402-rendered.json', wp_json_encode( $rendered, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
+		file_put_contents( '/tmp/t402-rendered.json', wp_json_encode( [ 'emails' => $rendered, 'breakdowns' => $breakdown_examples ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
 	}
 	$unparsed = array_filter( $rendered, function ( $r ) { return false !== strpos( $r['subject'] . $r['body'], 'ab_cart_edd_upgrade' ); } );
 	t402_check( 'render: no upgrade smart code left unparsed in the 3 emails', 3 === count( $rendered ) && ! $unparsed, array_map( function ( $r ) { return $r['subject']; }, $rendered ) );
