@@ -730,9 +730,11 @@ class EddUpgradeCartDriver extends EddCartDriver {
 			return 'lifetime';
 		}
 
+		// One base time for both, so the comparison can't straddle a second boundary.
+		$base         = time();
 		$old_length   = $license->license_length();
-		$old_seconds  = 'lifetime' !== $old_length ? strtotime( $old_length ) : 'lifetime';
-		$length_moves = $old_seconds !== strtotime( $new_length );
+		$old_seconds  = 'lifetime' !== $old_length ? strtotime( $old_length, $base ) : 'lifetime';
+		$length_moves = $old_seconds !== strtotime( $new_length, $base );
 
 		if ( ! $length_moves ) {
 			return (int) $license->expiration;
