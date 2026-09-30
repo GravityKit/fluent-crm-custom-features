@@ -1,0 +1,212 @@
+{
+ "title": "Abandoned upgrade (EDD) – 3 emails",
+ "trigger_name": "fc_ab_cart_simulation_edd_upgrade",
+ "status": "draft",
+ "conditions": {
+  "cart_conditions": [
+   []
+  ],
+  "active_once": "no",
+  "require_subscribed": "no"
+ },
+ "settings": {
+  "priority": 10
+ },
+ "sticky_note": {
+  "content": "License upgrades left at checkout. No discount. Prices are worked out when each email is sent, because the upgrade price changes every day. The run is cancelled when the license is upgraded or renewed by any route, when a renewal for it starts, or when the contact completes another paid order."
+ },
+ "sequences": [
+  {
+   "id": 1,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 60 minutes",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "60",
+    "wait_time_unit": "minutes",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 2,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Upgrade email 1: Your upgrade is saved",
+   "description": "Your upgrade to {{ab_cart_edd_upgrade.new_plan|your new plan}} is saved",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Upgrade email 1: Your upgrade is saved",
+     "email_subject": "Your upgrade to {{ab_cart_edd_upgrade.new_plan|your new plan}} is saved",
+     "email_pre_header": "Here’s how the upgrade price works.",
+     "email_body": "<!-- wp:group {\"backgroundColor\":\"primary\",\"layout\":{\"type\":\"constrained\"}} -->\n<div class=\"wp-block-group has-primary-background-color has-background\"><!-- wp:image {\"lightbox\":{\"enabled\":false},\"id\":881668,\"width\":\"200px\",\"sizeSlug\":\"full\",\"linkDestination\":\"custom\",\"align\":\"center\"} -->\n<figure class=\"wp-block-image aligncenter size-full is-resized\"><a href=\"https://www.gravitykit.com\"><img src=\"https://www.gravitykit.com/wp-content/uploads/2026/02/logo-5.png\" alt=\"GravityKit\" class=\"wp-image-881668\" style=\"width:200px\"/></a></figure>\n<!-- /wp:image --></div>\n<!-- /wp:group -->\n\n<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>You started upgrading from {{ab_cart_edd_upgrade.current_plan|your current plan}} to {{ab_cart_edd_upgrade.new_plan|your new plan}}, and we saved it for you.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n<div class=\"wp-block-buttons\"><!-- wp:button {\"style\":{\"color\":{\"background\":\"#1877f2\"}}} -->\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link has-background wp-element-button\" href=\"##ab_cart_edd_upgrade.recovery_url##\" style=\"background-color:#1877f2\">Finish Upgrading</a></div>\n<!-- /wp:button --></div>\n<!-- /wp:buttons -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:paragraph -->\n<p>The price can look odd, so here’s how it works:</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:html -->\n{{ab_cart_edd_upgrade.price_breakdown}}\n<!-- /wp:html -->\n\n<!-- wp:paragraph -->\n<p>{{ab_cart_edd_upgrade.price_change_line}}</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>{{ab_cart_edd_upgrade.renewal_line}} You won’t be charged twice.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>If something went wrong at checkout, just reply and we’ll fix it.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>All the best,<br>The GravityKit team</p>\n<!-- /wp:paragraph -->\n\n",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "upgrade-cart-1",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": 3,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 2 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "2",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 4,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Upgrade email 2: Is it the right fit?",
+   "description": "Is {{ab_cart_edd_upgrade.new_plan|your new plan}} the right fit?",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Upgrade email 2: Is it the right fit?",
+     "email_subject": "Is {{ab_cart_edd_upgrade.new_plan|your new plan}} the right fit?",
+     "email_pre_header": "What changes for you with the bigger plan.",
+     "email_body": "<!-- wp:group {\"backgroundColor\":\"primary\",\"layout\":{\"type\":\"constrained\"}} -->\n<div class=\"wp-block-group has-primary-background-color has-background\"><!-- wp:image {\"lightbox\":{\"enabled\":false},\"id\":881668,\"width\":\"200px\",\"sizeSlug\":\"full\",\"linkDestination\":\"custom\",\"align\":\"center\"} -->\n<figure class=\"wp-block-image aligncenter size-full is-resized\"><a href=\"https://www.gravitykit.com\"><img src=\"https://www.gravitykit.com/wp-content/uploads/2026/02/logo-5.png\" alt=\"GravityKit\" class=\"wp-image-881668\" style=\"width:200px\"/></a></figure>\n<!-- /wp:image --></div>\n<!-- /wp:group -->\n\n<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Moving to a bigger plan is a real decision, so here’s what changes for you. With {{ab_cart_edd_upgrade.new_plan|your new plan}} you also get:</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:html -->\n{{ab_cart_edd_upgrade.new_plan_extras}}\n<!-- /wp:html -->\n\n<!-- wp:paragraph -->\n<p>Not sure it covers what you need? Reply and tell us what you’re building. We’ll tell you whether the upgrade helps.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>You’re also covered by our <a href=\"https://www.gravitykit.com/refund-policy/\">30-day refund policy</a>.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n<div class=\"wp-block-buttons\"><!-- wp:button {\"style\":{\"color\":{\"background\":\"#1877f2\"}}} -->\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link has-background wp-element-button\" href=\"##ab_cart_edd_upgrade.recovery_url##\" style=\"background-color:#1877f2\">See My Upgrade</a></div>\n<!-- /wp:button --></div>\n<!-- /wp:buttons -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:paragraph -->\n<p>All the best,<br>The GravityKit team</p>\n<!-- /wp:paragraph -->\n\n",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "upgrade-cart-2",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": 5,
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 3 days",
+   "description": "",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "3",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   }
+  },
+  {
+   "id": 6,
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Upgrade email 3: Need approval?",
+   "description": "Need someone else to approve your upgrade?",
+   "parent_id": 0,
+   "condition_type": null,
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Upgrade email 3: Need approval?",
+     "email_subject": "Need someone else to approve your upgrade?",
+     "email_pre_header": "Here’s the price as of today, ready to forward.",
+     "email_body": "<!-- wp:group {\"backgroundColor\":\"primary\",\"layout\":{\"type\":\"constrained\"}} -->\n<div class=\"wp-block-group has-primary-background-color has-background\"><!-- wp:image {\"lightbox\":{\"enabled\":false},\"id\":881668,\"width\":\"200px\",\"sizeSlug\":\"full\",\"linkDestination\":\"custom\",\"align\":\"center\"} -->\n<figure class=\"wp-block-image aligncenter size-full is-resized\"><a href=\"https://www.gravitykit.com\"><img src=\"https://www.gravitykit.com/wp-content/uploads/2026/02/logo-5.png\" alt=\"GravityKit\" class=\"wp-image-881668\" style=\"width:200px\"/></a></figure>\n<!-- /wp:image --></div>\n<!-- /wp:group -->\n\n<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>If someone else needs to approve this, forward them this email. Here’s the price as of today:</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:html -->\n{{ab_cart_edd_upgrade.price_breakdown}}\n<!-- /wp:html -->\n\n<!-- wp:paragraph -->\n<p>{{ab_cart_edd_upgrade.renewal_soon_line}}</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>This is our last email about it. Your saved upgrade is here if you want it:</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n<div class=\"wp-block-buttons\"><!-- wp:button {\"style\":{\"color\":{\"background\":\"#1877f2\"}}} -->\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link has-background wp-element-button\" href=\"##ab_cart_edd_upgrade.recovery_url##\" style=\"background-color:#1877f2\">Finish Upgrading</a></div>\n<!-- /wp:button --></div>\n<!-- /wp:buttons -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:paragraph -->\n<p>All the best,<br>The GravityKit team</p>\n<!-- /wp:paragraph -->\n\n",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "upgrade-cart-3",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   }
+  }
+ ]
+}
