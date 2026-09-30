@@ -1215,6 +1215,8 @@ class EddCartTracking {
 			$extra_codes = [
 				'{{' . $group . '.current_plan}}'      => __( 'Current Plan', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.new_plan}}'          => __( 'New Plan', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.current_product}}'   => __( 'Current Product (no site count)', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.new_plan_name}}'     => __( 'New Plan Name for Sentences (product, or "the bigger {product} plan")', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.full_price}}'        => __( 'New Plan Regular Price', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.today_price}}'       => __( 'Upgrade Price Today', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.credit}}'            => __( 'Credit for the Current Plan', 'fluent-crm-custom-features' ),

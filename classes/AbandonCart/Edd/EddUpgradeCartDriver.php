@@ -376,7 +376,7 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	 * @return string|null
 	 */
 	public function getUpgradeCodeValue( AbandonCartModel $cart, string $value_key, string $default_value ): ?string {
-		$codes = [ 'current_plan', 'new_plan', 'full_price', 'today_price', 'credit', 'price_breakdown', 'price_change_line', 'renewal_line', 'renewal_soon_line', 'new_plan_extras' ];
+		$codes = [ 'current_plan', 'new_plan', 'current_product', 'new_plan_name', 'full_price', 'today_price', 'credit', 'price_breakdown', 'price_change_line', 'renewal_line', 'renewal_soon_line', 'new_plan_extras' ];
 
 		if ( ! in_array( $value_key, $codes, true ) ) {
 			return null;
@@ -409,6 +409,10 @@ class EddUpgradeCartDriver extends EddCartDriver {
 				return self::planName( (int) $license->download_id, $license->price_id );
 			case 'new_plan':
 				return self::planName( $new_download, $new_price_id );
+			case 'current_product':
+				return self::planName( (int) $license->download_id, null );
+			case 'new_plan_name':
+				return self::newPlanName( (int) $license->download_id, $new_download );
 			case 'full_price':
 				$lines = $this->priceLines( $cart, $license, $item, $path );
 				return $this->formatPrice( $lines['full_price'], $lines['currency'] );
@@ -444,6 +448,23 @@ class EddUpgradeCartDriver extends EddCartDriver {
 		$name     = (string) edd_get_download_name( $download_id, $price_id );
 
 		return esc_html( wp_specialchars_decode( wp_strip_all_tags( $name ), ENT_QUOTES ) );
+	}
+
+	/**
+	 * How the emails name the new plan, without the site count: the product when the upgrade moves
+	 * to another product ("All Access Pass"), or "the bigger {product} plan" for a bigger tier of the
+	 * same product. Written to sit mid-sentence, so the "the" stays lowercase.
+	 *
+	 * @param int $current_download The license's download.
+	 * @param int $new_download     The upgrade path's download.
+	 */
+	private static function newPlanName( int $current_download, int $new_download ): string {
+		if ( $new_download !== $current_download ) {
+			return self::planName( $new_download, null );
+		}
+
+		/* translators: %s: product name, e.g. GravityImport */
+		return sprintf( esc_html__( 'the bigger %s plan', 'fluent-crm-custom-features' ), self::planName( $current_download, null ) );
 	}
 
 	/**
