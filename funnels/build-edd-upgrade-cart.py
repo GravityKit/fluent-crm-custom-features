@@ -16,8 +16,10 @@ import os
 G = "ab_cart_edd_upgrade"
 NAME = "{{contact.first_name|there}}"
 URL = "##" + G + ".recovery_url##"
-CURRENT = "{{" + G + ".current_plan|your current plan}}"
-NEW = "{{" + G + ".new_plan|your new plan}}"
+# Product names without the site count; NEW_NAME is "All Access Pass" or "the bigger GravityImport plan",
+# written to sit mid-sentence.
+CURRENT_PRODUCT = "{{" + G + ".current_product|GravityKit}}"
+NEW_NAME = "{{" + G + ".new_plan_name|your new plan}}"
 TODAY = "{{" + G + ".today_price}}"
 RENEWAL = "{{" + G + ".renewal_line}}"
 RENEWAL_SOON = "{{" + G + ".renewal_soon_line}}"
@@ -39,14 +41,14 @@ EMAILS = [
     (
         "Upgrade email 1: Your upgrade is saved",
         60, "minutes",
-        "Your upgrade to " + NEW + " is saved",
+        "Your upgrade to " + NEW_NAME + " is saved",
         "Pick up right where you left off.",
         header()
         + greeting("Hey " + NAME + ",")
-        + para("Looks like you didn’t finish upgrading to " + NEW + ". It’s saved, so you can pick up where you "
+        + para("Looks like you didn’t finish upgrading to " + NEW_NAME + ". It’s saved, so you can pick up where you "
                "left off:")
         + button("Finish My Upgrade", URL)
-        + para("You get credit for your current " + CURRENT + " license, so the upgrade is just " + TODAY
+        + para("You get credit for your current " + CURRENT_PRODUCT + " license, so the upgrade is just " + TODAY
                + " today. " + RENEWAL)
         + para("If anything went wrong at checkout, just reply and we’ll sort it out.")
         + SIGN
@@ -56,11 +58,11 @@ EMAILS = [
     (
         "Upgrade email 2: Is it right for you?",
         2, "days",
-        "Is " + NEW + " right for you?",
+        "Is " + NEW_NAME + " right for you?",
         "A quick question about your upgrade.",
         header()
         + greeting("Hey " + NAME + ",")
-        + para("Still thinking about " + NEW + "? With it, you’d get:")
+        + para("Still thinking about " + NEW_NAME + "? With it, you’d get:")
         + raw(EXTRAS)
         + para("Not sure it fits what you’re building? Reply and tell us about your project. We’ll give you a "
                "straight answer, even if the answer is “you don’t need it.”")
@@ -77,8 +79,8 @@ EMAILS = [
         "Forward this to whoever approves purchases.",
         header()
         + greeting("Hey " + NAME + ",")
-        + para("If someone else approves purchases, feel free to forward them this email. Upgrading to " + NEW
-               + " is " + TODAY + " today, with credit for your current " + CURRENT + " license.")
+        + para("If someone else approves purchases, feel free to forward them this email. Upgrading to "
+               + NEW_NAME + " is " + TODAY + " today, with credit for your current " + CURRENT_PRODUCT + " license.")
         # Its own <p> when the license renews within 30 days; empty otherwise, so nothing is left behind.
         + raw(RENEWAL_SOON)
         + para("This is the last reminder we’ll send about it:")
