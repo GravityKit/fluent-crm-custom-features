@@ -30,6 +30,13 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	/** Order statuses that count as a completed, paid order. Refunded and revoked orders do not. */
 	private const PAID_ORDER_STATUSES = [ 'publish', 'complete', 'completed', 'partially_refunded' ];
 
+	/**
+	 * Carts skipped in this request, keyed by cart ID, with the reason to store once the runner is done.
+	 *
+	 * @var array<int,string>
+	 */
+	private static $skip_notes = [];
+
 	/** Renewal cart statuses that mean a renewal is under way. */
 	private const OPEN_RENEWAL_STATUSES = [ 'draft', 'pending', 'processing' ];
 
@@ -83,14 +90,83 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	 * - a license in it is being renewed, or was renewed after the cart was saved (renewal wins);
 	 * - the contact entered this automation within the resend cap.
 	 *
+	 * The reason is stored on the cart in place of the runner's "Under Cool Off Period" note.
+	 *
 	 * @param AbandonCartModel $cart
 	 */
 	public function isWithinCoolOffPeriod( AbandonCartModel $cart ) {
-		return AllowedDomains::holdBack( $cart )
-			|| ! $this->openUpgradeItems( $cart )
-			|| $this->paidOrderSince( $cart )
-			|| $this->renewalUnderWay( $cart )
-			|| $this->sentRecently( $cart );
+		if ( AllowedDomains::holdBack( $cart ) ) {
+			return true;
+		}
+
+		$reason = $this->skipReason( $cart );
+
+		if ( '' === $reason ) {
+			return false;
+		}
+
+		$data                    = $cart->cart ?: [];
+		$data['skipped_because'] = $reason;
+		$cart->cart              = $data;
+
+		if ( ! self::$skip_notes ) {
+			add_action( 'shutdown', [ self::class, 'writeSkipNotes' ], 1 );
+		}
+
+		self::$skip_notes[ (int) $cart->id ] = $reason;
+
+		return true;
+	}
+
+	/**
+	 * Why this cart should not start the upgrade automation; empty when it should.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	public function skipReason( AbandonCartModel $cart ): string {
+		if ( ! $this->openUpgradeItems( $cart ) ) {
+			$closed_reasons = array_map( [ $this, 'upgradeClosedReason' ], self::upgradeItems( $cart ) );
+
+			return in_array( 'upgraded', $closed_reasons, true )
+				? __( 'Skipped: the license was already upgraded', 'fluent-crm-custom-features' )
+				: __( 'Skipped: the upgrade is no longer available for this license', 'fluent-crm-custom-features' );
+		}
+
+		if ( $this->paidOrderSince( $cart ) ) {
+			return __( 'Skipped: the contact completed a paid order after leaving the cart', 'fluent-crm-custom-features' );
+		}
+
+		if ( $this->renewalUnderWay( $cart ) ) {
+			return __( 'Skipped: a renewal for this license is under way', 'fluent-crm-custom-features' );
+		}
+
+		if ( $this->sentRecently( $cart ) ) {
+			/* translators: %d: days */
+			return sprintf( __( 'Skipped: the contact got the upgrade emails within the last %d days', 'fluent-crm-custom-features' ), $this->resendCapDays( $cart ) );
+		}
+
+		return '';
+	}
+
+	/**
+	 * Replaces the runner's "Under Cool Off Period" note on skipped carts with the real reason.
+	 */
+	public static function writeSkipNotes(): void {
+		foreach ( self::$skip_notes as $cart_id => $note ) {
+			AbandonCartModel::where( 'id', $cart_id )->where( 'status', 'skipped' )->update( [ 'note' => $note ] );
+		}
+
+		self::$skip_notes = [];
+	}
+
+	/**
+	 * Only this upgrade automation counts toward the cap. Recapture's list of shoppers it emailed
+	 * is about new-purchase carts, so it is not checked here.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	protected function sentRecently( AbandonCartModel $cart ): bool {
+		return $this->enteredAutomationWithin( $cart, $this->resendCapDays( $cart ) );
 	}
 
 	/**
@@ -142,17 +218,27 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	/**
 	 * Whether this license can still be upgraded along this item's path.
 	 *
-	 * False once the license moved to another plan (the upgrade, or a different one, went through),
-	 * when it is disabled, revoked or expired (Software Licensing refuses to upgrade those), or when
-	 * the path is no longer offered for it.
-	 *
 	 * @param array<string,mixed> $item Stored upgrade cart item.
 	 */
 	public function isUpgradeOpen( array $item ): bool {
+		return '' === $this->upgradeClosedReason( $item );
+	}
+
+	/**
+	 * Why this license can no longer take this item's upgrade, or empty when it can.
+	 *
+	 * `upgraded` once the license moved to another plan (this upgrade, or a different one, went
+	 * through) or is already on the path's plan. `unavailable` when it is gone, disabled, revoked
+	 * or expired (Software Licensing refuses to upgrade those), or the path is no longer offered.
+	 *
+	 * @param array<string,mixed> $item Stored upgrade cart item.
+	 * @return string `upgraded`, `unavailable`, or empty.
+	 */
+	public function upgradeClosedReason( array $item ): string {
 		$license = edd_software_licensing()->get_license( (int) Arr::get( $item, 'license_id' ) );
 
 		if ( ! $license || in_array( $license->status, [ 'revoked', 'disabled', 'expired' ], true ) ) {
-			return false;
+			return 'unavailable';
 		}
 
 		$captured_download = Arr::get( $item, 'license_download_id' );
@@ -161,20 +247,25 @@ class EddUpgradeCartDriver extends EddCartDriver {
 			&& ( (int) $captured_download !== (int) $license->download_id || (int) $captured_price !== (int) $license->price_id );
 
 		if ( $plan_changed ) {
-			return false;
+			return 'upgraded';
 		}
 
 		$upgrade_id = (int) Arr::get( $item, 'upgrade_id' );
 		$path       = edd_sl_get_upgrade_path( $license->download_id, $upgrade_id );
 
 		if ( ! $path ) {
-			return false;
+			return 'unavailable';
 		}
 
 		$already_on_path = (int) $path['download_id'] === (int) $license->download_id && (int) $path['price_id'] === (int) $license->price_id;
-		$offered         = (array) edd_sl_get_license_upgrades( $license->ID );
 
-		return ! $already_on_path && isset( $offered[ $upgrade_id ] );
+		if ( $already_on_path ) {
+			return 'upgraded';
+		}
+
+		$offered = (array) edd_sl_get_license_upgrades( $license->ID );
+
+		return isset( $offered[ $upgrade_id ] ) ? '' : 'unavailable';
 	}
 
 	/**
@@ -319,9 +410,11 @@ class EddUpgradeCartDriver extends EddCartDriver {
 			case 'new_plan':
 				return self::planName( $new_download, $new_price_id );
 			case 'full_price':
-				return $this->formatForCart( self::regularPrice( $new_download, $new_price_id ), $cart );
+				$lines = $this->priceLines( $cart, $license, $item, $path );
+				return $this->formatPrice( $lines['full_price'], $lines['currency'] );
 			case 'today_price':
-				return $this->formatForCart( $this->todayPrice( $item ), $cart );
+				$lines = $this->priceLines( $cart, $license, $item, $path );
+				return $this->formatPrice( $lines['today'], $lines['currency'] );
 			case 'credit':
 				$lines = $this->priceLines( $cart, $license, $item, $path );
 				return $this->formatPrice( $lines['credit'], $lines['currency'] );
@@ -373,38 +466,49 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	}
 
 	/**
-	 * Formats a store-currency amount in the cart's currency, converting it when EDD Multi Currency is active.
+	 * Runs a price calculation in the cart's currency.
 	 *
-	 * @param float            $amount Amount in the store currency.
-	 * @param AbandonCartModel $cart
-	 */
-	private function formatForCart( float $amount, AbandonCartModel $cart ): string {
-		[ $amount, $currency ] = $this->toCartCurrency( $amount, $cart );
-
-		return $this->formatPrice( $amount, $currency );
-	}
-
-	/**
-	 * Converts a store-currency amount to the cart's currency when EDD Multi Currency is active.
+	 * EDD Multi Currency converts and rounds each product price into the shopper's currency, and
+	 * Software Licensing prorates those converted prices. Converting a store-currency result instead
+	 * can land a cent or more away from what checkout shows, so the calculation runs with the cart's
+	 * currency selected, the way Multi Currency selects it from a `?currency=` link.
 	 *
-	 * @param float            $amount Amount in the store currency.
 	 * @param AbandonCartModel $cart
-	 * @return array{0: float, 1: string} Amount and the currency it is in.
+	 * @param callable         $calculate Returns the amounts.
+	 * @return array{0: mixed, 1: string} What the callback returned, and the currency it is in.
 	 */
-	private function toCartCurrency( float $amount, AbandonCartModel $cart ): array {
-		$currency   = (string) ( $cart->currency ?: edd_get_currency() );
-		$store      = (string) edd_get_currency();
-		$can_switch = $currency !== $store && class_exists( '\\EDD_Multi_Currency\\Utils\\Currency' );
+	private function inCartCurrency( AbandonCartModel $cart, callable $calculate ): array {
+		$store    = (string) edd_get_currency();
+		$currency = strtoupper( (string) ( $cart->currency ?: $store ) );
+
+		$can_switch = $currency !== $store
+			&& function_exists( 'eddMultiCurrency' )
+			&& class_exists( '\\EDD_Multi_Currency\\Utils\\Currency' )
+			&& \EDD_Multi_Currency\Utils\Currency::isValidCurrency( $currency );
 
 		if ( ! $can_switch ) {
-			return [ $amount, $store ];
+			return [ $calculate(), $store ];
 		}
 
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- restored below; nothing is read from the request.
+		$had_get          = array_key_exists( 'currency', $_GET );
+		$previous_get     = $had_get ? $_GET['currency'] : null;
+		$previous_session = EDD()->session->get( 'currency' );
+		$_GET['currency'] = $currency;
+
 		try {
-			return [ (float) \EDD_Multi_Currency\Utils\Currency::convert( $amount, $currency ), $currency ];
-		} catch ( \Exception $e ) {
-			return [ $amount, $store ];
+			$result = $calculate();
+		} finally {
+			if ( $had_get ) {
+				$_GET['currency'] = $previous_get;
+			} else {
+				unset( $_GET['currency'] );
+			}
+			EDD()->session->set( 'currency', $previous_session );
 		}
+		// phpcs:enable
+
+		return [ $result, $currency ];
 	}
 
 	/**
@@ -419,39 +523,49 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	 * @param \EDD_SL_License     $license
 	 * @param array<string,mixed> $item Stored upgrade cart item.
 	 * @param array<string,mixed> $path Upgrade path.
-	 * @return array{new_plan: float, credit: float, today: float, currency: string, time_based: bool, until_expiration: bool}
+	 * @return array{full_price: float, new_plan: float, credit: float, today: float, currency: string, time_based: bool, until_expiration: bool}
 	 */
 	private function priceLines( AbandonCartModel $cart, $license, array $item, array $path ): array {
-		$new_download = (int) $path['download_id'];
-		$new_price_id = isset( $path['price_id'] ) && is_numeric( $path['price_id'] ) ? (int) $path['price_id'] : null;
-		$full_price   = self::regularPrice( $new_download, $new_price_id );
-		$seconds_used = self::secondsUsedIfProratedByTime( $license, $path, $full_price );
-		$new_length   = edd_sl_get_product_license_length( $new_download, $new_price_id ?? false );
-		$until_expiry = null !== $seconds_used && 'lifetime' !== $new_length;
-		$new_plan     = $full_price;
+		[ $lines, $currency ] = $this->inCartCurrency(
+			$cart,
+			function () use ( $license, $item, $path ) {
+				$new_download = (int) $path['download_id'];
+				$new_price_id = isset( $path['price_id'] ) && is_numeric( $path['price_id'] ) ? (int) $path['price_id'] : null;
+				$full_price   = self::regularPrice( $new_download, $new_price_id );
+				$seconds_used = self::secondsUsedIfProratedByTime( $license, $path, $full_price );
+				$new_length   = edd_sl_get_product_license_length( $new_download, $new_price_id ?? false );
+				$until_expiry = null !== $seconds_used && 'lifetime' !== $new_length;
+				$new_plan     = $full_price;
 
-		if ( $until_expiry ) {
-			// Same arithmetic as edd_sl_get_time_based_pro_rated_upgrade_cost().
-			$midnight_today = strtotime( 'today midnight' );
-			$new_seconds    = strtotime( $new_length, $midnight_today ) - $midnight_today;
-			$new_plan       = $full_price * abs( 1 - $seconds_used / $new_seconds );
-		}
+				if ( $until_expiry ) {
+					// Same arithmetic as edd_sl_get_time_based_pro_rated_upgrade_cost().
+					$midnight_today = strtotime( 'today midnight' );
+					$new_seconds    = strtotime( $new_length, $midnight_today ) - $midnight_today;
+					$new_plan       = $full_price * abs( 1 - $seconds_used / $new_seconds );
+				}
+
+				return [
+					'full_price'       => $full_price,
+					'new_plan'         => $new_plan,
+					'today'            => $this->todayPrice( $item ),
+					'time_based'       => null !== $seconds_used,
+					'until_expiration' => $until_expiry,
+				];
+			}
+		);
 
 		$decimals = (int) edd_currency_decimal_filter();
-
-		[ $new_plan, $currency ] = $this->toCartCurrency( $new_plan, $cart );
-		[ $today ]               = $this->toCartCurrency( $this->todayPrice( $item ), $cart );
-
-		$new_plan = round( $new_plan, $decimals );
-		$today    = round( $today, $decimals );
+		$new_plan = round( $lines['new_plan'], $decimals );
+		$today    = round( $lines['today'], $decimals );
 
 		return [
+			'full_price'       => round( $lines['full_price'], $decimals ),
 			'new_plan'         => $new_plan,
 			'credit'           => round( $new_plan - $today, $decimals ),
 			'today'            => $today,
 			'currency'         => $currency,
-			'time_based'       => null !== $seconds_used,
-			'until_expiration' => $until_expiry,
+			'time_based'       => $lines['time_based'],
+			'until_expiration' => $lines['until_expiration'],
 		];
 	}
 
@@ -473,8 +587,7 @@ class EddUpgradeCartDriver extends EddCartDriver {
 			return null;
 		}
 
-		$old_price = (float) ( edd_has_variable_prices( $license->download_id ) ? edd_get_price_option_amount( $license->download_id, $license->price_id ) : edd_get_download_price( $license->download_id ) );
-		$method    = apply_filters( 'edd_sl_proration_method', edd_get_option( 'edd_sl_proration_method', 'cost-based' ), $license->ID, $old_price, $full_price );
+		$method    = apply_filters( 'edd_sl_proration_method', edd_get_option( 'edd_sl_proration_method', 'cost-based' ), $license->ID, self::oldPrice( $license ), $full_price );
 		$is_simple = 'cost-based' === $method || apply_filters( 'edd_sl_license_upgrade_pro_rate_simple', false );
 
 		if ( $is_simple || $license->is_lifetime ) {
@@ -490,6 +603,17 @@ class EddUpgradeCartDriver extends EddCartDriver {
 		$within_minimum = $minimum_time >= $seconds_used;
 
 		return $within_minimum ? null : (int) $seconds_used;
+	}
+
+	/**
+	 * The current plan's price as Software Licensing reads it for proration (the price option's current amount).
+	 *
+	 * @param \EDD_SL_License $license
+	 */
+	private static function oldPrice( $license ): float {
+		$is_variable = edd_has_variable_prices( $license->download_id );
+
+		return (float) ( $is_variable ? edd_get_price_option_amount( $license->download_id, $license->price_id ) : edd_get_download_price( $license->download_id ) );
 	}
 
 	/**
@@ -541,7 +665,7 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	 * @param int|null            $new_price_id
 	 */
 	private function priceChangeLine( $license, array $path, int $new_download, ?int $new_price_id ): string {
-		$method     = apply_filters( 'edd_sl_proration_method', edd_get_option( 'edd_sl_proration_method', 'cost-based' ), $license->ID, 0, 0 );
+		$method     = apply_filters( 'edd_sl_proration_method', edd_get_option( 'edd_sl_proration_method', 'cost-based' ), $license->ID, self::oldPrice( $license ), self::regularPrice( $new_download, $new_price_id ) );
 		$time_based = 'cost-based' !== $method && ! apply_filters( 'edd_sl_license_upgrade_pro_rate_simple', false );
 
 		if ( ! $time_based || empty( $path['pro_rated'] ) || $license->is_lifetime ) {
@@ -556,7 +680,8 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	}
 
 	/**
-	 * What happens to the renewal date: no more renewals, the date stays, or the new date.
+	 * What happens to the renewal date (no more renewals, the date stays, or the new date), and
+	 * that the customer is not charged twice. Empty when the date cannot be worked out.
 	 *
 	 * @param \EDD_SL_License $license
 	 * @param int             $new_download
@@ -566,7 +691,7 @@ class EddUpgradeCartDriver extends EddCartDriver {
 		$new_expiration = self::expirationAfterUpgrade( $license, $new_download, $new_price_id );
 
 		if ( 'lifetime' === $new_expiration ) {
-			return __( 'Your new plan is a lifetime license, so there are no more renewals.', 'fluent-crm-custom-features' );
+			return __( 'Your new plan is a lifetime license, so there are no more renewals. You won’t be charged twice.', 'fluent-crm-custom-features' );
 		}
 
 		if ( ! $new_expiration ) {
@@ -577,11 +702,11 @@ class EddUpgradeCartDriver extends EddCartDriver {
 
 		if ( (int) $new_expiration === (int) $license->expiration ) {
 			/* translators: %s: date */
-			return sprintf( __( 'Your renewal date stays %s.', 'fluent-crm-custom-features' ), $date );
+			return sprintf( __( 'Your renewal date stays %s. You won’t be charged twice.', 'fluent-crm-custom-features' ), $date );
 		}
 
 		/* translators: %s: date */
-		return sprintf( __( 'Your license will renew on %s.', 'fluent-crm-custom-features' ), $date );
+		return sprintf( __( 'Your license will renew on %s. You won’t be charged twice.', 'fluent-crm-custom-features' ), $date );
 	}
 
 	/**

@@ -153,6 +153,20 @@ class EddCartDriver extends AbstractCartDriver {
 			return true;
 		}
 
+		return $this->enteredAutomationWithin( $cart, $cap_days );
+	}
+
+	/**
+	 * Whether this contact entered this provider's automation in the last `$cap_days` days.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @param int              $cap_days
+	 */
+	protected function enteredAutomationWithin( AbandonCartModel $cart, int $cap_days ): bool {
+		if ( $cap_days <= 0 || ! $cart->email ) {
+			return false;
+		}
+
 		$contact = FluentCrmApi( 'contacts' )->getContact( $cart->email );
 
 		if ( ! $contact ) {

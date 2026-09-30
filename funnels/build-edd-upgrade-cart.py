@@ -49,7 +49,8 @@ EMAILS = [
         + para("The price can look odd, so here’s how it works:")
         + raw(BREAKDOWN)
         + para(PRICE_CHANGE)
-        + para(RENEWAL + " You won’t be charged twice.")
+        # Ends with "You won’t be charged twice." when there is a date to give; empty otherwise.
+        + para(RENEWAL)
         + para("If something went wrong at checkout, just reply and we’ll fix it.")
         + SIGN
         + para("P.S. " + PS_CALL),

@@ -2,6 +2,7 @@
 
 namespace CustomCRM\AbandonCart\Edd;
 
+use FluentCrm\App\Models\CampaignEmail;
 use FluentCrm\App\Models\FunnelSubscriber;
 use FluentCrm\App\Models\Subscriber;
 use FluentCrm\App\Modules\AbandonCart\AbandonCartModel;
@@ -836,14 +837,23 @@ class EddCartTracking {
 	}
 
 	/**
-	 * Cancels an upgrade cart's automation run, keeping the run and its reason, and deletes the cart.
+	 * Stops an upgrade cart that will not be recovered: a cart whose emails had started is marked
+	 * lost with the reason (and its run cancelled with it); one still being built is deleted.
 	 *
 	 * @param AbandonCartModel $cart
-	 * @param string           $why Shown on the cancelled automation run.
+	 * @param string           $why Stored on the cart and on the cancelled automation run.
 	 */
 	private function dropUpgradeCart( AbandonCartModel $cart, string $why ): void {
 		$this->cancelCartAutomation( $cart, $why );
-		$cart->delete();
+
+		if ( 'processing' !== $cart->status ) {
+			$cart->delete();
+			return;
+		}
+
+		$cart->status = 'lost';
+		$cart->note   = $why;
+		$cart->save();
 	}
 
 	/**
@@ -880,15 +890,45 @@ class EddCartTracking {
 	 * @param string           $note Shown on the run in FluentCRM.
 	 */
 	private function cancelCartAutomation( AbandonCartModel $cart, string $note ): void {
-		FunnelSubscriber::where( 'source_ref_id', $cart->id )
+		$runs = FunnelSubscriber::where( 'source_ref_id', $cart->id )
 			->where( 'source_trigger_name', self::driverFor( (string) $cart->provider )->getTriggerName() )
 			->whereIn( 'status', [ 'active', 'pending', 'paused' ] )
-			->update(
-				[
-					'status' => 'cancelled',
-					'notes'  => $note,
-				]
-			);
+			->get();
+
+		self::cancelRuns( $runs, $note );
+	}
+
+	/**
+	 * Cancels automation runs and the emails FluentCRM already queued for them.
+	 *
+	 * Cancelling a run stops its next steps, but an email step that already ran leaves a pending or
+	 * scheduled email that still sends; those are cancelled too.
+	 *
+	 * @param iterable<FunnelSubscriber> $runs
+	 * @param string                     $note Shown on each run and each cancelled email.
+	 */
+	private static function cancelRuns( $runs, string $note ): void {
+		foreach ( $runs as $run ) {
+			$run->status = 'cancelled';
+			$run->notes  = $note;
+			$run->save();
+
+			$campaign_ids = CartEmailGuard::campaignIdsFor( [ (int) $run->funnel_id ] );
+
+			if ( ! $campaign_ids ) {
+				continue;
+			}
+
+			CampaignEmail::where( 'subscriber_id', $run->subscriber_id )
+				->whereIn( 'campaign_id', $campaign_ids )
+				->whereIn( 'status', [ 'pending', 'scheduled' ] )
+				->update(
+					[
+						'status' => 'cancelled',
+						'note'   => $note,
+					]
+				);
+		}
 	}
 
 	/**
@@ -941,7 +981,7 @@ class EddCartTracking {
 
 		$trigger_name = $this->driver->getTriggerName();
 
-		FunnelSubscriber::whereIn( 'subscriber_id', $subscriber_ids )
+		$runs = FunnelSubscriber::whereIn( 'subscriber_id', $subscriber_ids )
 			->whereHas(
 				'funnel',
 				function ( $query ) use ( $trigger_name ) {
@@ -949,12 +989,9 @@ class EddCartTracking {
 				}
 			)
 			->whereIn( 'status', [ 'active', 'pending', 'paused' ] )
-			->update(
-				[
-					'status' => 'cancelled',
-					'notes'  => $note,
-				]
-			);
+			->get();
+
+		self::cancelRuns( $runs, $note );
 	}
 
 	/**
@@ -974,6 +1011,8 @@ class EddCartTracking {
 
 		self::$restoring = true;
 
+		$this->selectCartCurrency( $record );
+
 		edd_empty_cart();
 
 		$failed_renewals = [];
@@ -984,13 +1023,12 @@ class EddCartTracking {
 			if ( ! empty( $item['is_upgrade'] ) && ! empty( $item['license_id'] ) ) {
 				$added = $this->addUpgradeToCart( $item );
 
-				if ( ! is_wp_error( $added ) ) {
-					continue;
+				if ( is_wp_error( $added ) ) {
+					// Never sell the new plan as a new purchase: the customer may already be on it.
+					$failed_upgrades[] = sprintf( '#%d: %s', (int) $item['license_id'], $added->get_error_code() );
 				}
 
-				// The upgrade can no longer be bought. Add the new plan as a new purchase so the
-				// shopper still lands on a checkout with it.
-				$failed_upgrades[] = sprintf( '#%d: %s', (int) $item['license_id'], $added->get_error_code() );
+				continue;
 			} elseif ( ! empty( $item['license_id'] ) && function_exists( 'edd_sl_add_renewal_to_cart' ) ) {
 				// Added the way a renewal link adds it, so EDD prices it as a renewal and records it on the license.
 				$added = edd_sl_add_renewal_to_cart( (int) $item['license_id'] );
@@ -1020,11 +1058,14 @@ class EddCartTracking {
 		}
 
 		// One of ours at most: a code named in the link (a store-wide code such as BFCM50), else the
-		// newest code this cart was sent.
-		$ours = array_merge(
-			[ strtoupper( sanitize_text_field( (string) Arr::get( $data, 'fc_ab_code', '' ) ) ) ],
-			( new EddRecoveryDiscount() )->getIssuedCodes( $record )
-		);
+		// newest code this cart was sent. Renewals and upgrades never get one.
+		$gets_offer = EddCartDriver::PROVIDER === $record->provider;
+		$ours       = $gets_offer
+			? array_merge(
+				[ strtoupper( sanitize_text_field( (string) Arr::get( $data, 'fc_ab_code', '' ) ) ) ],
+				( new EddRecoveryDiscount() )->getIssuedCodes( $record )
+			)
+			: [];
 
 		foreach ( array_unique( array_filter( $ours ) ) as $code ) {
 			if ( edd_is_discount_valid( $code, '', false ) ) {
@@ -1043,7 +1084,8 @@ class EddCartTracking {
 		}
 		if ( $failed_upgrades ) {
 			/* translators: %s: license IDs and error codes */
-			$notes[] = sprintf( __( 'Recovery link could not upgrade license %s; added as a new purchase', 'fluent-crm-custom-features' ), implode( ', ', $failed_upgrades ) );
+			$notes[] = sprintf( __( 'Recovery link could not upgrade license %s; nothing added', 'fluent-crm-custom-features' ), implode( ', ', $failed_upgrades ) );
+			edd_set_error( 'customcrm_upgrade_unavailable', __( 'This license was already upgraded, or the upgrade is no longer available.', 'fluent-crm-custom-features' ) );
 		}
 		if ( $notes ) {
 			$record->note = implode( '; ', $notes );
@@ -1054,6 +1096,29 @@ class EddCartTracking {
 
 		wp_safe_redirect( edd_get_checkout_uri() );
 		exit;
+	}
+
+	/**
+	 * Selects the cart's currency for this visitor, so the rebuilt checkout shows the currency the
+	 * cart and its emails were priced in. Only with EDD Multi Currency and a currency it offers.
+	 *
+	 * @param AbandonCartModel $record
+	 */
+	private function selectCartCurrency( AbandonCartModel $record ): void {
+		$currency  = strtoupper( (string) $record->currency );
+		$can_set   = $currency && function_exists( 'eddMultiCurrency' ) && class_exists( '\\EDD_Multi_Currency\\Checkout\\CurrencyHandler' );
+		$is_chosen = $can_set && edd_get_currency() === $currency;
+
+		if ( ! $can_set || $is_chosen ) {
+			return;
+		}
+
+		try {
+			eddMultiCurrency( \EDD_Multi_Currency\Checkout\CurrencyHandler::class )->setCurrencyForSession( $currency );
+		} catch ( \Throwable $e ) {
+			// Not a currency the store offers any more: checkout uses the visitor's current one.
+			self::logError( 'selectCartCurrency', $e );
+		}
 	}
 
 	/**
@@ -1214,6 +1279,10 @@ class EddCartTracking {
 
 			if ( $is_discount_code ) {
 				return $default_value;
+			}
+
+			if ( 0 === strpos( (string) $value_key, 'recovery_url_code.' ) ) {
+				return $this->driver->getRecoveryUrl( $cart ) ?: edd_get_checkout_uri();
 			}
 		}
 

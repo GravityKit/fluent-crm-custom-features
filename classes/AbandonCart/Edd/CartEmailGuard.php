@@ -68,6 +68,18 @@ class CartEmailGuard {
 	private static function cartCampaignIds(): array {
 		$funnel_ids = Funnel::whereIn( 'trigger_name', self::CART_TRIGGERS )->pluck( 'id' )->toArray();
 
+		return self::campaignIdsFor( array_map( 'intval', $funnel_ids ) );
+	}
+
+	/**
+	 * The email campaigns these automations' email steps send, by each step's `reference_campaign`.
+	 *
+	 * Never by `parent_id`: stores keep leftover campaigns whose parent ID matches a reused automation ID.
+	 *
+	 * @param int[] $funnel_ids Automation IDs.
+	 * @return int[]
+	 */
+	public static function campaignIdsFor( array $funnel_ids ): array {
 		if ( ! $funnel_ids ) {
 			return [];
 		}
