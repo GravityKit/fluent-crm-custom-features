@@ -1,7 +1,7 @@
 <?php
 /**
- * EDD abandoned-cart checks (WEBSITE-402) against a gkclone copy of the store. Creates t402-*
- * fixtures and deletes them; blocks all outbound HTTP while it runs.
+ * EDD abandoned-cart checks (WEBSITE-402, license upgrades WEBSITE-425) against a gkclone copy of
+ * the store. Creates t402-* fixtures and deletes them; blocks all outbound HTTP while it runs.
  *
  *   docker cp tests/gkclone/abandoned-cart-checks.php <cli>:/tmp/ && docker exec <cli> wp eval-file /tmp/abandoned-cart-checks.php
  */
@@ -9,15 +9,19 @@
 use CustomCRM\AbandonCart\Edd\EddCartDriver;
 use CustomCRM\AbandonCart\Edd\EddCartTracking;
 use CustomCRM\AbandonCart\Edd\EddRenewalCartDriver;
+use CustomCRM\AbandonCart\Edd\EddUpgradeCartDriver;
 use FluentCrm\App\Models\FunnelSubscriber;
 use FluentCrm\App\Modules\AbandonCart\AbandonCartModel;
 
-global $wpdb, $results, $run, $emails, $orders;
-$p       = $wpdb->prefix;
-$results = [];
-$run     = substr( md5( microtime() ), 0, 6 );
-$emails  = [];
-$orders  = [];
+global $wpdb, $results, $run, $emails, $orders, $licenses;
+$p        = $wpdb->prefix;
+$results  = [];
+$run      = substr( md5( microtime() ), 0, 6 );
+$emails   = [];
+$orders   = [];
+$licenses = [];
+$ab_backup_set = false;
+$ab_backup     = null;
 
 function t402_check( string $name, bool $pass, $detail = '' ) {
 	global $results;
@@ -39,11 +43,11 @@ function t402_product(): array {
 	return [ $id, $pid ];
 }
 
-function t402_order( string $email, int $download_id, ?int $price_id ): int {
+function t402_order( string $email, int $download_id, ?int $price_id, ?string $date = null, array $extra_options = [] ): int {
 	global $orders;
-	$opts     = null === $price_id ? [] : [ 'price_id' => $price_id ];
+	$opts     = array_merge( null === $price_id ? [] : [ 'price_id' => $price_id ], $extra_options );
 	$order_id = edd_build_order( [
-		'price' => 99, 'date' => current_time( 'mysql' ), 'user_email' => $email,
+		'price' => 99, 'date' => $date ?: current_time( 'mysql' ), 'user_email' => $email,
 		'purchase_key' => strtolower( md5( uniqid( '', true ) ) ), 'currency' => 'USD',
 		'downloads' => [ [ 'id' => $download_id, 'quantity' => 1, 'options' => $opts ] ],
 		'cart_details' => [ [ 'name' => 'T402', 'id' => $download_id, 'item_number' => [ 'id' => $download_id, 'quantity' => 1, 'options' => $opts ], 'item_price' => 99, 'quantity' => 1, 'discount' => 0, 'subtotal' => 99, 'tax' => 0, 'fees' => [], 'price' => 99 ] ],
@@ -66,7 +70,8 @@ function t402_cart( string $email, string $status, string $provider = 'edd', arr
 
 /** Calls restoreCart() and stops at its redirect instead of exiting. */
 function t402_restore( AbandonCartModel $cart, string $provider = 'edd' ): void {
-	$tracker = new EddCartTracking( EddCartDriver::PROVIDER === $provider ? new EddCartDriver() : new EddRenewalCartDriver() );
+	$drivers = [ 'edd' => EddCartDriver::class, 'edd_renewal' => EddRenewalCartDriver::class, 'edd_upgrade' => EddUpgradeCartDriver::class ];
+	$tracker = new EddCartTracking( new $drivers[ $provider ]() );
 	$stop    = function () { throw new RuntimeException( 't402-redirect' ); };
 	add_filter( 'wp_redirect', $stop, 1 );
 	try {
@@ -592,10 +597,557 @@ katz.co",
 	$funnel_json = json_decode( (string) file_get_contents( WP_PLUGIN_DIR . '/fluent-crm-custom-features/funnels/edd-abandoned-cart.json' ), true );
 	$steps       = array_map( function ( $s ) { return $s['action_name'] . ':' . ( $s['settings']['wait_time_amount'] ?? '' ) . ( $s['settings']['wait_time_unit'] ?? '' ); }, (array) ( $funnel_json['sequences'] ?? [] ) );
 	t402_check( 'automation JSON: wait 15m, email, wait 24h, email, wait 3d, email', [ 'fluentcrm_wait_times:15minutes', 'send_custom_email:', 'fluentcrm_wait_times:1425minutes', 'send_custom_email:', 'fluentcrm_wait_times:3days', 'send_custom_email:' ] === $steps, $steps );
+
+
+	// 14. License upgrades left at checkout (WEBSITE-425). The upgrade provider is switched on for
+	// this run only; the settings are restored in the cleanup below.
+	$ab_backup     = get_option( '_fc_ab_cart_settings', null );
+	$ab_backup_set = true;
+	$ab_settings   = (array) $ab_backup;
+	$ab_settings['enabled_providers'] = array_values( array_unique( array_merge( (array) ( $ab_settings['enabled_providers'] ?? [] ), [ 'edd_upgrade' ] ) ) );
+	update_option( '_fc_ab_cart_settings', $ab_settings );
+	\FluentCrm\App\Modules\AbandonCart\AbCartHelper::getSettings( false );
+
+	$up_driver = \FluentCrm\App\Modules\AbandonCart\Drivers\DriverManager::getDriver( 'edd_upgrade' );
+	t402_check( 'upgrade provider registered and available', $up_driver instanceof EddUpgradeCartDriver && $up_driver->isAvailable() && 'fc_ab_cart_simulation_edd_upgrade' === $up_driver->getTriggerName() );
+	// FluentCRM boots enabled drivers at init, before this run enabled the provider.
+	$up_driver->register();
+	$up_driver->registerAutomationTrigger();
+	$up_tracker = new EddCartTracking( $up_driver );
+	$statics    = [];
+	foreach ( [ 'renewed_licenses', 'upgraded_licenses' ] as $static ) {
+		$statics[ $static ] = new ReflectionProperty( EddCartTracking::class, $static );
+		$statics[ $static ]->setAccessible( true );
+	}
+	$reset_statics = function () use ( $statics ) {
+		$statics['renewed_licenses']->setValue( null, [] );
+		$statics['upgraded_licenses']->setValue( null, [] );
+	};
+
+	// The upgrade automation, imported the way FluentCRM > Automations > Import does it.
+	$upgrade_json = json_decode( (string) file_get_contents( WP_PLUGIN_DIR . '/fluent-crm-custom-features/funnels/edd-upgrade-cart.json' ), true );
+	$import       = new ReflectionMethod( \FluentCrm\App\Http\Controllers\FunnelController::class, 'createFunnelFromData' );
+	$import->setAccessible( true );
+	$up_funnel    = $import->invoke( new \FluentCrm\App\Http\Controllers\FunnelController(), $upgrade_json, $upgrade_json['sequences'] );
+	$up_funnel->title  = 'T402 upgrade automation';
+	$up_funnel->status = 'published';
+	$up_funnel->save();
+	// The automation's own emails, by the campaign each email step points at. Never by parent_id:
+	// gkclone has leftover campaigns whose parent_id matches a reused automation ID.
+	$up_campaigns = [];
+	$up_steps_db  = \FluentCrm\App\Models\FunnelSequence::where( 'funnel_id', $up_funnel->id )->where( 'action_name', 'send_custom_email' )->orderBy( 'sequence' )->get();
+	foreach ( $up_steps_db as $step ) {
+		$campaign = \FluentCrm\App\Models\FunnelCampaign::find( (int) ( $step->settings['reference_campaign'] ?? 0 ) );
+		if ( $campaign ) {
+			$up_campaigns[] = $campaign;
+		}
+	}
+	t402_check( 'upgrade automation JSON imports: 3 emails on the upgrade trigger', 'fc_ab_cart_simulation_edd_upgrade' === $up_funnel->trigger_name && 3 === count( $up_campaigns ), [ 'trigger' => $up_funnel->trigger_name, 'emails' => count( $up_campaigns ) ] );
+	$up_steps = array_map( function ( $s ) { return $s['action_name'] . ':' . ( $s['settings']['wait_time_amount'] ?? '' ) . ( $s['settings']['wait_time_unit'] ?? '' ); }, (array) ( $upgrade_json['sequences'] ?? [] ) );
+	t402_check( 'upgrade automation JSON: wait 60m, email, wait 2d, email, wait 3d, email', [ 'fluentcrm_wait_times:60minutes', 'send_custom_email:', 'fluentcrm_wait_times:2days', 'send_custom_email:', 'fluentcrm_wait_times:3days', 'send_custom_email:' ] === $up_steps, $up_steps );
+	$all_copy = implode( ' ', array_map( function ( $c ) { return $c->email_subject . ' ' . $c->email_body; }, $up_campaigns ) );
+	t402_check( 'upgrade emails carry no discount code', false === stripos( $all_copy, 'discount' ) && false === stripos( $all_copy, 'coupon' ) );
+
+	// A customer with a GravityImport Single Site license, bought two hours ago, renewing in 200
+	// days, so Software Licensing prorates the upgrade by time.
+	$owner_email = t402_email( 'upowner' );
+	$lic_order   = t402_order( $owner_email, $download_id, 1, gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - 2 * HOUR_IN_SECONDS ) );
+	$license     = edd_software_licensing()->get_license_by_purchase( $lic_order, $download_id );
+	if ( ! $license ) {
+		( new EDD_SL_License() )->create( $download_id, $lic_order, 1, 0 );
+		$license = edd_software_licensing()->get_license_by_purchase( $lic_order, $download_id );
+	}
+	$licenses[]          = (int) $license->ID;
+	$license->expiration = current_time( 'timestamp' ) + 200 * DAY_IN_SECONDS;
+	$license             = edd_software_licensing()->get_license( $license->ID );
+	$paths               = (array) edd_sl_get_license_upgrades( $license->ID );
+	$path_key            = function ( int $to_download, ?int $to_price ) use ( $paths ) {
+		foreach ( $paths as $key => $path ) {
+			if ( (int) $path['download_id'] === $to_download && ( null === $to_price || (int) $path['price_id'] === $to_price ) ) {
+				return (int) $key;
+			}
+		}
+		return null;
+	};
+	$tier_id = $path_key( $download_id, 2 );
+	$life_id = $path_key( $download_id, 5 );
+	$aa_id   = $path_key( 808301, null );
+	t402_check( 'fixture license can take tier, lifetime and All Access upgrades', $license && ! in_array( $license->status, [ 'revoked', 'disabled', 'expired' ], true ) && null !== $tier_id && null !== $life_id && null !== $aa_id, [ 'license' => $license ? $license->ID : null, 'status' => $license ? $license->status : null, 'paths' => array_keys( $paths ) ] );
+
+	// The EDD cart built by Software Licensing's own upgrade action, stopped at its redirect.
+	$build_upgrade = function ( int $license_id, int $upgrade_id ) {
+		edd_empty_cart();
+		unset( $_COOKIE['fc_ab_edd_cart_token'] );
+		$stop = function () { throw new RuntimeException( 't402-redirect' ); };
+		add_filter( 'wp_redirect', $stop, 1 );
+		try {
+			edd_sl_add_upgrade_to_cart( [ 'license_id' => $license_id, 'upgrade_id' => $upgrade_id ] );
+		} catch ( RuntimeException $e ) {
+			if ( 't402-redirect' !== $e->getMessage() ) {
+				throw $e;
+			}
+		} finally {
+			remove_filter( 'wp_redirect', $stop, 1 );
+		}
+	};
+
+	// 14a. Capture.
+	$build_upgrade( (int) $license->ID, $tier_id );
+	$sl_item  = ( (array) edd_get_cart_contents() )[0] ?? [];
+	$captured = $tracker->syncCart( t402_email( 'upcapture' ) );
+	$up_item  = $captured ? ( $captured->cart['cart_contents'][0] ?? [] ) : [];
+	t402_check( 'SL upgrade action put the upgrade in the EDD cart', ! empty( $sl_item['options']['is_upgrade'] ) && (int) $sl_item['options']['license_id'] === (int) $license->ID, $sl_item );
+	t402_check(
+		'upgrade cart captured as edd_upgrade with license, path, expiration, lifetime flag and plan',
+		$captured && 'edd_upgrade' === $captured->provider && (int) ( $up_item['license_id'] ?? 0 ) === (int) $license->ID && $tier_id === ( $up_item['upgrade_id'] ?? null )
+			&& (int) $license->expiration === ( $up_item['license_expiration'] ?? null ) && false === ( $up_item['license_lifetime'] ?? null )
+			&& $download_id === ( $up_item['license_download_id'] ?? null ) && 1 === ( $up_item['license_price_id'] ?? null ) && null === $captured->cart['recovery_discount'],
+		[ 'provider' => $captured ? $captured->provider : null, 'item' => $up_item ]
+	);
+	$captured->delete();
+
+	edd_empty_cart();
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+	edd_add_to_cart( $download_id, [ 'price_id' => 1, 'is_renewal' => 1, 'license_id' => (int) $license->ID ] );
+	edd_add_to_cart( $download_id, [ 'price_id' => 2, 'is_upgrade' => true, 'upgrade_id' => $tier_id, 'license_id' => (int) $license->ID, 'cost' => 50 ] );
+	$mixed = $tracker->syncCart( t402_email( 'upmixed' ) );
+	t402_check( 'a cart with a renewal and an upgrade stays edd_renewal', $mixed && 'edd_renewal' === $mixed->provider, $mixed ? $mixed->provider : null );
+	if ( $mixed ) {
+		$mixed->delete();
+	}
+	edd_empty_cart();
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+
+	// Upgrade carts in the captured shape.
+	$make = function ( string $tag, string $status, array $item_over = [], ?string $email = null ) use ( $up_item ) {
+		return AbandonCartModel::create( [
+			'email' => $email ?: t402_email( $tag ), 'full_name' => 'T Four', 'provider' => 'edd_upgrade', 'status' => $status,
+			'subtotal' => 44, 'total' => 44, 'currency' => 'USD',
+			'cart' => [ 'cart_contents' => [ array_merge( $up_item, $item_over ) ], 'coupons' => [] ],
+		] );
+	};
+	// A running automation for a cart, as the runner starts it.
+	$start_run = function ( AbandonCartModel $cart ) use ( $wpdb, $p, $up_funnel ) {
+		$contact = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => $cart->email, 'status' => 'transactional' ] );
+		$cart->contact_id    = $contact->id;
+		$cart->automation_id = $up_funnel->id;
+		$cart->save();
+		$wpdb->insert( "{$p}fc_funnel_subscribers", [ 'funnel_id' => $up_funnel->id, 'subscriber_id' => $contact->id, 'status' => 'active', 'starting_sequence_id' => 0, 'source_trigger_name' => 'fc_ab_cart_simulation_edd_upgrade', 'source_ref_id' => $cart->id, 'created_at' => current_time( 'mysql' ), 'updated_at' => current_time( 'mysql' ) ] );
+		return (int) $wpdb->insert_id;
+	};
+	$run_row = function ( int $id ) use ( $wpdb, $p ) {
+		return $wpdb->get_row( $wpdb->prepare( "SELECT status, notes FROM {$p}fc_funnel_subscribers WHERE id = %d", $id ) );
+	};
+
+	// 14b. Skip rules, one at a time, against a control that passes all of them.
+	$control = $make( 'skipcontrol', 'draft' );
+	t402_check(
+		'control: an open upgrade cart is not skipped by any rule',
+		false === $up_driver->isWithinCoolOffPeriod( $control ) && 1 === count( $up_driver->openUpgradeItems( $control ) ) && ! $up_driver->paidOrderSince( $control ) && ! $up_driver->renewalUnderWay( $control ),
+		[ 'open' => count( $up_driver->openUpgradeItems( $control ) ), 'paid' => $up_driver->paidOrderSince( $control ), 'renewal' => $up_driver->renewalUnderWay( $control ) ]
+	);
+
+	$domains_backup_up = get_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION, null );
+	\CustomCRM\AbandonCart\Edd\AllowedDomains::save( 'gravitykit.com, katz.co' );
+	$held = $make( 'upheld', 'draft' );
+	( new \FluentCrm\App\Modules\AbandonCart\AbandonCartRunner() )->runAbandonCart( AbandonCartModel::find( $held->id ) );
+	\CustomCRM\AbandonCart\Edd\AllowedDomains::writeNotes();
+	$held      = AbandonCartModel::find( $held->id );
+	$held_made = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$p}fc_subscribers WHERE email = %s", $held->email ) );
+	t402_check( 'skip: upgrade cart outside the allowlist is held back with the note, no contact', 'skipped' === $held->status && 0 === strpos( (string) $held->note, 'Held back' ) && 0 === $held_made, [ 'status' => $held->status, 'note' => $held->note, 'contacts' => $held_made ] );
+	$inside_up_email = 't402-upinside-' . $run . '@katz.co';
+	$emails[]        = $inside_up_email;
+	$inside_up       = $make( 'upinside', 'draft', [], $inside_up_email );
+	t402_check( 'control: an allowlisted upgrade cart is not held back', false === $up_driver->isWithinCoolOffPeriod( $inside_up ) );
+	null === $domains_backup_up ? delete_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION ) : update_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION, $domains_backup_up, true );
+
+	$license->price_id = 2;
+	$on_path           = $make( 'skiponpath', 'draft' );
+	$skip_on_path      = $up_driver->isWithinCoolOffPeriod( $on_path );
+	$license->price_id = 1;
+	$license           = edd_software_licensing()->get_license( $license->ID );
+	t402_check( 'skip: the license is already on the upgrade plan', true === $skip_on_path && 1 === (int) $license->price_id );
+
+	$no_path = function ( $offered ) use ( $tier_id ) {
+		unset( $offered[ $tier_id ] );
+		return $offered;
+	};
+	add_filter( 'edd_sl_get_license_upgrade_paths', $no_path );
+	$gone      = $make( 'skipnopath', 'draft' );
+	$skip_gone = $up_driver->isWithinCoolOffPeriod( $gone );
+	remove_filter( 'edd_sl_get_license_upgrade_paths', $no_path );
+	t402_check( 'skip: the license no longer allows that upgrade', true === $skip_gone && false === $up_driver->isWithinCoolOffPeriod( $gone ) );
+
+	$paid_email = t402_email( 'skippaid' );
+	t402_order( $paid_email, $download_id, 1 );
+	$paid_after  = $make( 'skippaid', 'draft', [], $paid_email );
+	$paid_before = $make( 'skippaid', 'draft', [], $paid_email );
+	$wpdb->update( "{$p}fc_abandoned_carts", [ 'created_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - HOUR_IN_SECONDS ) ], [ 'id' => $paid_before->id ] );
+	$wpdb->update( "{$p}fc_abandoned_carts", [ 'created_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) + HOUR_IN_SECONDS ) ], [ 'id' => $paid_after->id ] );
+	$paid_before = AbandonCartModel::find( $paid_before->id );
+	$paid_after  = AbandonCartModel::find( $paid_after->id );
+	t402_check( 'skip: the contact completed a paid order after leaving the cart', true === $up_driver->isWithinCoolOffPeriod( $paid_before ) && $up_driver->paidOrderSince( $paid_before ) );
+	t402_check( 'control: a paid order before the cart does not skip it', false === $up_driver->paidOrderSince( $paid_after ) );
+
+	$renewal_cart = t402_cart( t402_email( 'skiprenewalcart' ), 'draft', 'edd_renewal' );
+	$rc           = $renewal_cart->cart;
+	$rc['cart_contents'][0] = array_merge( $rc['cart_contents'][0], [ 'license_id' => (int) $license->ID, 'is_renewal' => true, 'license_expiration' => (int) $license->expiration ] );
+	$renewal_cart->cart     = $rc;
+	$renewal_cart->save();
+	$with_renewal = $make( 'skipwithrenewal', 'draft' );
+	t402_check( 'skip: the license has an open renewal cart', true === $up_driver->isWithinCoolOffPeriod( $with_renewal ) && $up_driver->renewalUnderWay( $with_renewal ) );
+	$renewal_cart->delete();
+	t402_check( 'control: without the renewal cart it is not skipped', false === $up_driver->isWithinCoolOffPeriod( $with_renewal ) );
+
+	$renewed_since = $make( 'skiprenewed', 'draft', [ 'license_expiration' => (int) $license->expiration - DAY_IN_SECONDS ] );
+	t402_check( 'skip: the license was renewed after the cart was saved', true === $up_driver->isWithinCoolOffPeriod( $renewed_since ) && $up_driver->renewalUnderWay( $renewed_since ) );
+
+	$cap_cart    = $make( 'skipcap', 'draft' );
+	$cap_contact = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => $cap_cart->email, 'status' => 'transactional' ] );
+	$wpdb->insert( "{$p}fc_funnel_subscribers", [ 'funnel_id' => $up_funnel->id, 'subscriber_id' => $cap_contact->id, 'status' => 'completed', 'starting_sequence_id' => 0, 'created_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - 30 * DAY_IN_SECONDS ), 'updated_at' => current_time( 'mysql' ) ] );
+	$cap_run   = (int) $wpdb->insert_id;
+	$cap_30    = $up_driver->isWithinCoolOffPeriod( $cap_cart );
+	$wpdb->update( "{$p}fc_funnel_subscribers", [ 'created_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - 70 * DAY_IN_SECONDS ) ], [ 'id' => $cap_run ] );
+	$cap_70    = $up_driver->isWithinCoolOffPeriod( $cap_cart );
+	$cap_short = function () { return 20; };
+	$wpdb->update( "{$p}fc_funnel_subscribers", [ 'created_at' => gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - 30 * DAY_IN_SECONDS ) ], [ 'id' => $cap_run ] );
+	add_filter( 'customcrm/edd_ab_cart/upgrade_resend_cap_days', $cap_short );
+	$cap_filtered = $up_driver->isWithinCoolOffPeriod( $cap_cart );
+	remove_filter( 'customcrm/edd_ab_cart/upgrade_resend_cap_days', $cap_short );
+	t402_check( 'skip: the contact entered the upgrade automation 30 days ago (cap 60)', true === $cap_30 );
+	t402_check( 'control: 70 days ago is outside the 60-day cap', false === $cap_70 );
+	t402_check( 'control: the upgrade_resend_cap_days filter shortens the cap', false === $cap_filtered );
+
+	// 14c. Stop rules.
+	global $wp_filter;
+	$upgrade_hook = function ( int $license_id, int $order_id ) use ( &$wp_filter ) {
+		// EDD Recurring cancels subscriptions on this hook; keep it off gkclone's data.
+		$detached = [];
+		foreach ( $wp_filter['edd_sl_license_upgraded']->callbacks ?? [] as $priority => $callbacks ) {
+			foreach ( $callbacks as $cb ) {
+				if ( is_array( $cb['function'] ) && 'cancel_subscription_on_upgrade' === $cb['function'][1] ) {
+					remove_action( 'edd_sl_license_upgraded', $cb['function'], $priority );
+					$detached[] = [ $cb['function'], $priority, $cb['accepted_args'] ];
+				}
+			}
+		}
+		do_action( 'edd_sl_license_upgraded', $license_id, [ 'payment_id' => $order_id, 'old_payment_id' => 0, 'old_download_id' => 0, 'old_price_id' => 0 ] );
+		foreach ( $detached as [ $fn, $priority, $args ] ) {
+			add_action( 'edd_sl_license_upgraded', $fn, $priority, $args );
+		}
+	};
+
+	$stop_up     = $make( 'stopupgraded', 'processing' );
+	$stop_up_run = $start_run( $stop_up );
+	$stop_link   = $make( 'stoplinked', 'processing' );
+	$stop_other  = $make( 'stopother', 'processing', [ 'license_id' => 999999998 ] );
+	$up_order    = t402_order( t402_email( 'upgradeorder' ), $download_id, 2 );
+	$stop_link->order_id = $up_order;
+	$stop_link->save();
+	$upgrade_hook( (int) $license->ID, $up_order );
+	$tracker->closeRenewedCarts();
+	$reset_statics();
+	$stop_up    = AbandonCartModel::find( $stop_up->id );
+	$stop_link  = AbandonCartModel::find( $stop_link->id );
+	$stop_other = AbandonCartModel::find( $stop_other->id );
+	t402_check( 'stop: an upgrade by any route marks the cart recovered with a note', 'recovered' === $stop_up->status && 'Upgraded outside the recovery link' === $stop_up->note && (int) $stop_up->order_id === $up_order, [ 'status' => $stop_up->status, 'note' => $stop_up->note ] );
+	t402_check( 'stop: ... and cancels its automation run', 'cancelled' === $run_row( $stop_up_run )->status && 'Cancelled because the license was upgraded' === $run_row( $stop_up_run )->notes, $run_row( $stop_up_run ) );
+	t402_check( 'stop: an upgrade through the recovery link is recovered without the "outside" note', 'recovered' === $stop_link->status && 'Upgraded outside the recovery link' !== $stop_link->note, [ 'status' => $stop_link->status, 'note' => $stop_link->note ] );
+	t402_check( 'control: an upgrade cart for another license stays open', 'processing' === $stop_other->status, $stop_other->status );
+
+	$stop_paid     = $make( 'stoppaid', 'processing' );
+	$stop_paid_run = $start_run( $stop_paid );
+	$bystander     = $make( 'stopbystander', 'processing' );
+	t402_order( $stop_paid->email, $download_id, 1 );
+	$reset_statics();
+	t402_check( 'stop: another paid order deletes the upgrade cart', null === AbandonCartModel::find( $stop_paid->id ) );
+	t402_check( 'stop: ... and cancels its run with the reason', 'cancelled' === $run_row( $stop_paid_run )->status && 'Cancelled because the contact completed another purchase' === $run_row( $stop_paid_run )->notes, $run_row( $stop_paid_run ) );
+	t402_check( 'control: another shopper\'s upgrade cart is untouched', 'processing' === AbandonCartModel::find( $bystander->id )->status );
+
+	// The paid order is this license's own upgrade: left for the shutdown close, then recovered.
+	$own        = $make( 'stopown', 'processing' );
+	$own_run    = $start_run( $own );
+	$statics['upgraded_licenses']->setValue( null, [ (int) $license->ID => 0 ] );
+	$own_order  = t402_order( $own->email, $download_id, 2 );
+	$own_mid    = AbandonCartModel::find( $own->id );
+	$statics['upgraded_licenses']->setValue( null, [ (int) $license->ID => $own_order ] );
+	$tracker->closeRenewedCarts();
+	$reset_statics();
+	$own = AbandonCartModel::find( $own->id );
+	t402_check( 'an order that upgrades the cart\'s own license leaves it for the upgrade close', $own_mid && 'processing' === $own_mid->status && 'recovered' === $own->status && (int) $own->order_id === $own_order, [ 'mid' => $own_mid ? $own_mid->status : null, 'end' => $own->status ] );
+
+	$stop_renew     = $make( 'stoprenewed', 'processing' );
+	$stop_renew_run = $start_run( $stop_renew );
+	$statics['renewed_licenses']->setValue( null, [ (int) $license->ID ] );
+	$tracker->closeRenewedCarts();
+	$reset_statics();
+	t402_check( 'stop: renewing the license deletes the upgrade cart and cancels its run', null === AbandonCartModel::find( $stop_renew->id ) && 'cancelled' === $run_row( $stop_renew_run )->status && 'Cancelled because the license was renewed' === $run_row( $stop_renew_run )->notes, $run_row( $stop_renew_run ) );
+
+	$stop_rc     = $make( 'stoprenewalcart', 'processing' );
+	$stop_rc_run = $start_run( $stop_rc );
+	edd_empty_cart();
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+	$renew_added = edd_sl_add_renewal_to_cart( (int) $license->ID );
+	if ( is_wp_error( $renew_added ) ) {
+		edd_add_to_cart( $download_id, [ 'price_id' => 1, 'is_renewal' => 1, 'license_id' => (int) $license->ID ] );
+	}
+	$renewer = $tracker->syncCart( t402_email( 'renewer' ) );
+	t402_check( 'stop: a renewal cart for the license deletes the upgrade cart and cancels its run', $renewer && 'edd_renewal' === $renewer->provider && null === AbandonCartModel::find( $stop_rc->id ) && 'cancelled' === $run_row( $stop_rc_run )->status && 'Cancelled because a renewal for this license was started' === $run_row( $stop_rc_run )->notes, [ 'renewal_added' => is_wp_error( $renew_added ) ? $renew_added->get_error_code() : 'sl', 'renewer' => $renewer ? $renewer->provider : null, 'run' => $run_row( $stop_rc_run ) ] );
+	if ( $renewer ) {
+		$renewer->delete();
+	}
+	edd_empty_cart();
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+
+	// New-purchase paths leave upgrade carts to the upgrade rules.
+	$np_email = t402_email( 'npupgrade' );
+	$np_up    = $make( 'npupgrade', 'processing', [], $np_email );
+	edd_add_to_cart( $download_id, [ 'price_id' => 1 ] );
+	$np_cart  = $tracker->syncCart( $np_email );
+	t402_check( 'a new-purchase cart for the same email leaves a running upgrade cart alone', $np_cart && 'edd' === $np_cart->provider && 'processing' === AbandonCartModel::find( $np_up->id )->status );
+	$np_cart->delete();
+	edd_empty_cart();
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+
+	// 14d. Recovery link.
+	$restore = $make( 'restore', 'processing' );
+	t402_restore( $restore, 'edd_upgrade' );
+	$restored_items = (array) edd_get_cart_contents();
+	$restored_opts  = $restored_items[0]['options'] ?? [];
+	$expected_cost  = (float) edd_sl_get_license_upgrade_cost( (int) $license->ID, $tier_id );
+	$restore        = AbandonCartModel::find( $restore->id );
+	t402_check(
+		'recovery link rebuilds the upgrade at today\'s price',
+		1 === count( $restored_items ) && (int) $restored_items[0]['id'] === $download_id && ! empty( $restored_opts['is_upgrade'] ) && (int) $restored_opts['license_id'] === (int) $license->ID
+			&& (int) $restored_opts['upgrade_id'] === $tier_id && 2 === (int) $restored_opts['price_id'] && abs( (float) $restored_opts['cost'] - $expected_cost ) < 0.01 && 1 === (int) $restore->click_counts && ! $restore->note,
+		[ 'items' => $restored_items, 'expected_cost' => $expected_cost, 'note' => $restore->note ]
+	);
+	t402_check( 'the rebuilt upgrade is priced by Software Licensing at checkout', abs( (float) edd_get_cart_total() - $expected_cost ) < 0.01, [ 'total' => edd_get_cart_total(), 'expected' => $expected_cost ] );
+	edd_empty_cart();
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+
+	$restore_bad = $make( 'restorebad', 'processing', [ 'license_price_id' => 3 ] );
+	t402_restore( $restore_bad, 'edd_upgrade' );
+	$bad_items   = (array) edd_get_cart_contents();
+	$restore_bad = AbandonCartModel::find( $restore_bad->id );
+	t402_check(
+		'a recovery link for an upgrade that is no longer possible adds the new plan with a note',
+		1 === count( $bad_items ) && empty( $bad_items[0]['options']['is_upgrade'] ) && 2 === (int) ( $bad_items[0]['options']['price_id'] ?? 0 ) && false !== strpos( (string) $restore_bad->note, 'could not upgrade license #' . $license->ID . ': upgrade_unavailable' ),
+		[ 'note' => $restore_bad->note, 'items' => $bad_items ]
+	);
+	edd_empty_cart();
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+
+	// 14e. Smart codes, worked out when the email is sent.
+	$code_cart = $make( 'codes', 'processing' );
+	$code      = function ( AbandonCartModel $cart, string $key, string $default = 'DEFAULT' ) use ( $up_tracker ) {
+		$subscriber = (object) [ 'email' => $cart->email ];
+		return (string) $up_tracker->parseSmartCode( '{{ab_cart_edd_upgrade.' . $key . '}}', $key, $default, $subscriber );
+	};
+	$plan_name = function ( int $download, int $price ) {
+		return esc_html( wp_specialchars_decode( wp_strip_all_tags( (string) edd_get_download_name( $download, $price ) ), ENT_QUOTES ) );
+	};
+	$full      = (float) edd_get_price_option_amount( $download_id, 2 );
+	$today     = (float) edd_sl_get_license_upgrade_cost( (int) $license->ID, $tier_id );
+	$fmt       = function ( float $amount ) use ( $up_driver ) { return $up_driver->formatPrice( $amount, 'USD' ); };
+	$date_fmt  = get_option( 'date_format' );
+	$codes_now = [
+		'current_plan' => $code( $code_cart, 'current_plan' ),
+		'new_plan'     => $code( $code_cart, 'new_plan' ),
+		'full_price'   => $code( $code_cart, 'full_price' ),
+		'today_price'  => $code( $code_cart, 'today_price' ),
+		'credit'       => $code( $code_cart, 'credit' ),
+		'breakdown'    => $code( $code_cart, 'price_breakdown' ),
+		'change'       => $code( $code_cart, 'price_change_line' ),
+		'renewal'      => $code( $code_cart, 'renewal_line' ),
+		'soon'         => $code( $code_cart, 'renewal_soon_line' ),
+		'extras'       => $code( $code_cart, 'new_plan_extras' ),
+	];
+	t402_check( 'code: current_plan and new_plan', $plan_name( $download_id, 1 ) === $codes_now['current_plan'] && $plan_name( $download_id, 2 ) === $codes_now['new_plan'], [ $codes_now['current_plan'], $codes_now['new_plan'] ] );
+	t402_check( 'code: full_price is the new plan\'s regular price', $fmt( $full ) === $codes_now['full_price'], [ $codes_now['full_price'], $full ] );
+	t402_check( 'code: today_price is SL\'s prorated cost now, below the full price', $fmt( $today ) === $codes_now['today_price'] && $today > 0 && $today < $full, [ $codes_now['today_price'], $today ] );
+	t402_check( 'code: credit is full minus today', $fmt( $full - $today ) === $codes_now['credit'], [ $codes_now['credit'], $full - $today ] );
+	t402_check(
+		'code: price_breakdown has the three lines',
+		false !== strpos( $codes_now['breakdown'], $plan_name( $download_id, 2 ) . ': ' . $fmt( $full ) ) && false !== strpos( $codes_now['breakdown'], 'Credit for your current plan: −' . $fmt( $full - $today ) ) && false !== strpos( $codes_now['breakdown'], 'You pay today: ' . $fmt( $today ) ),
+		$codes_now['breakdown']
+	);
+	t402_check( 'code: price_change_line says a term upgrade gets lower each day', false !== strpos( $codes_now['change'], 'lower each day' ), $codes_now['change'] );
+	t402_check( 'code: renewal_line, same term: the date stays', 'Your renewal date stays ' . date_i18n( $date_fmt, (int) $license->expiration ) . '.' === $codes_now['renewal'], $codes_now['renewal'] );
+	t402_check( 'code: renewal_soon_line is empty 200 days out', '' === $codes_now['soon'], $codes_now['soon'] );
+	t402_check( 'code: new_plan_extras for a bigger tier of the same product', false !== strpos( $codes_now['extras'], '<li>Up to 3 Sites, instead of Single Site</li>' ), $codes_now['extras'] );
+
+	$life_cart = $make( 'codeslife', 'processing', [ 'upgrade_id' => $life_id ] );
+	t402_check( 'code: renewal_line, lifetime plan: no more renewals', 'Your new plan is a lifetime license, so there are no more renewals.' === $code( $life_cart, 'renewal_line' ), $code( $life_cart, 'renewal_line' ) );
+	t402_check( 'code: price_change_line says a lifetime upgrade goes up each day', false !== strpos( $code( $life_cart, 'price_change_line' ), 'goes up' ), $code( $life_cart, 'price_change_line' ) );
+
+	// A different term length: SL counts the new length from the license's latest payment.
+	$other_term = function ( $length, $payment_id, $download, $license_id ) use ( $license ) {
+		return (int) $license_id === (int) $license->ID ? '+1 months' : $length;
+	};
+	add_filter( 'edd_sl_license_exp_length', $other_term, 10, 4 );
+	$term_line = $code( $code_cart, 'renewal_line' );
+	remove_filter( 'edd_sl_license_exp_length', $other_term, 10 );
+	$payment_ids   = (array) edd_software_licensing()->get_license( $license->ID )->payment_ids;
+	$latest_order  = edd_get_order( (int) end( $payment_ids ) );
+	$sl_new_expiry = strtotime( '+1 years', strtotime( $latest_order->date_created ) );
+	t402_check( 'code: renewal_line, different term: the date SL\'s upgrade handler would set', 'Your license will renew on ' . date_i18n( $date_fmt, $sl_new_expiry ) . '.' === $term_line, [ 'got' => $term_line, 'expected_date' => date_i18n( $date_fmt, $sl_new_expiry ) ] );
+
+	$aa_cart = $make( 'codesaa', 'processing', [ 'upgrade_id' => $aa_id ] );
+	t402_check( 'code: new_plan_extras for All Access', false !== strpos( $code( $aa_cart, 'new_plan_extras' ), 'every GravityKit plugin, with all updates and support' ), $code( $aa_cart, 'new_plan_extras' ) );
+
+	$saved_expiration    = (int) $license->expiration;
+	$soon                = current_time( 'timestamp' ) + 10 * DAY_IN_SECONDS;
+	$license->expiration = $soon;
+	$soon_line           = $code( $code_cart, 'renewal_soon_line' );
+	$license->expiration = $saved_expiration;
+	$license             = edd_software_licensing()->get_license( $license->ID );
+	t402_check( 'code: renewal_soon_line within 30 days', 'Your license renews on ' . date_i18n( $date_fmt, $soon ) . '. If you’d rather upgrade then, reply and we’ll set it up.' === $soon_line, $soon_line );
+
+	$closed_cart = $make( 'codesclosed', 'processing', [ 'license_price_id' => 3 ] );
+	t402_check(
+		'code: price codes fall back to their default once the upgrade is not possible',
+		'DEFAULT' === $code( $closed_cart, 'today_price' ) && 'DEFAULT' === $code( $closed_cart, 'price_breakdown' ) && 'DEFAULT' === $code( $closed_cart, 'renewal_line' ) && $plan_name( $download_id, 1 ) === $code( $closed_cart, 'current_plan' )
+	);
+	$discounts_before = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}edd_adjustments WHERE type = 'discount'" );
+	$no_code          = $code( $code_cart, 'recovery_discount_code', 'NOCODE' );
+	$discounts_after  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}edd_adjustments WHERE type = 'discount'" );
+	t402_check( 'code: no discount code is ever created for an upgrade cart', 'NOCODE' === $no_code && $discounts_before === $discounts_after, [ $no_code, $discounts_before, $discounts_after ] );
+
+	// The three imported emails, rendered by FluentCRM's own parser for a contact with a running upgrade cart.
+	$render_contact = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => t402_email( 'render' ), 'first_name' => 'Tess', 'status' => 'subscribed' ] );
+	$render_cart    = $make( 'render', 'processing', [], $render_contact->email );
+	$rendered       = [];
+	foreach ( $up_campaigns as $campaign ) {
+		$rendered[] = [
+			'subject' => \FluentCrm\App\Services\Libs\Parser\Parser::parse( $campaign->email_subject, $render_contact ),
+			'body'    => \FluentCrm\App\Services\Libs\Parser\Parser::parse( $campaign->email_body, $render_contact ),
+		];
+	}
+	// T402_DUMP=1 saves the rendered emails to /tmp/t402-rendered.json for reading.
+	if ( getenv( 'T402_DUMP' ) ) {
+		file_put_contents( '/tmp/t402-rendered.json', wp_json_encode( $rendered, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
+	}
+	$unparsed = array_filter( $rendered, function ( $r ) { return false !== strpos( $r['subject'] . $r['body'], 'ab_cart_edd_upgrade' ); } );
+	t402_check( 'render: no upgrade smart code left unparsed in the 3 emails', 3 === count( $rendered ) && ! $unparsed, array_map( function ( $r ) { return $r['subject']; }, $rendered ) );
+	t402_check( 'render: email 1 subject names the new plan', 'Your upgrade to ' . $plan_name( $download_id, 2 ) . ' is saved' === $rendered[0]['subject'], $rendered[0]['subject'] );
+	t402_check(
+		'render: email 1 body has the plans, the breakdown, the renewal line and a recovery link',
+		false !== strpos( $rendered[0]['body'], 'Hi Tess,' ) && false !== strpos( $rendered[0]['body'], 'You pay today: ' . $fmt( $today ) ) && false !== strpos( $rendered[0]['body'], 'Your renewal date stays' ) && false !== strpos( $rendered[0]['body'], 'fc_cart_edd_upgrade' ) && false !== strpos( $rendered[0]['body'], $render_cart->checkout_key ),
+		substr( wp_strip_all_tags( $rendered[0]['body'] ), 0, 600 )
+	);
+	t402_check( 'render: email 2 lists what the new plan adds and the refund policy', false !== strpos( $rendered[1]['body'], 'Up to 3 Sites, instead of Single Site' ) && false !== strpos( $rendered[1]['body'], '30-day refund policy' ) );
+	t402_check( 'render: email 3 repeats the price for an approver', false !== strpos( $rendered[2]['body'], 'You pay today: ' . $fmt( $today ) ) && false !== strpos( $rendered[2]['body'], 'This is our last email about it.' ) );
+
+	// 14f. Send-time guard: an outside contact walked through the upgrade automation gets no email.
+	$guard_up_backup = get_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION, null );
+	\CustomCRM\AbandonCart\Edd\AllowedDomains::save( 'gravitykit.com, katz.co' );
+	$up_sent    = [];
+	$up_capture = function ( $simulated, $data ) use ( &$up_sent ) {
+		$up_sent[] = $data['to']['email'] ?? '';
+		return true;
+	};
+	add_filter( 'fluent_crm/is_simulated_mail', $up_capture, 1, 2 );
+	$up_walk = function ( string $address ) use ( $wpdb, $p, $up_funnel ) {
+		$contact = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => $address, 'status' => 'subscribed' ] );
+		( new \FluentCrm\App\Services\Funnel\FunnelProcessor() )->startFunnelSequence( $up_funnel, [], [], $contact );
+		for ( $i = 0; $i < 3; $i++ ) {
+			$wpdb->query( $wpdb->prepare( "UPDATE {$p}fc_funnel_subscribers SET next_execution_time = %s WHERE subscriber_id = %d AND funnel_id = %d AND status = 'active'", gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - 60 ), $contact->id, $up_funnel->id ) );
+			( new \FluentCrm\App\Services\Funnel\FunnelProcessor() )->followUpSequenceActions();
+		}
+		return $wpdb->get_col( $wpdb->prepare( "SELECT ce.status FROM {$p}fc_campaign_emails ce JOIN {$p}fc_campaigns c ON c.id = ce.campaign_id WHERE ce.subscriber_id = %d AND c.parent_id = %d", $contact->id, $up_funnel->id ) );
+	};
+	$up_outside          = t402_email( 'upguardoutside' );
+	$up_outside_statuses = $up_walk( $up_outside );
+	t402_check(
+		'guard: an outside contact inside the upgrade automation gets no email',
+		$up_outside_statuses && ! in_array( 'sent', $up_outside_statuses, true ) && in_array( 'cancelled', $up_outside_statuses, true ) && ! in_array( $up_outside, $up_sent, true ),
+		[ 'statuses' => $up_outside_statuses, 'sent_to' => $up_sent ]
+	);
+	$up_team          = 't402-upguardteam-' . $run . '@katz.co';
+	$emails[]         = $up_team;
+	$up_team_statuses = $up_walk( $up_team );
+	t402_check( 'control: a team contact\'s upgrade emails are left alone', $up_team_statuses && ! in_array( 'cancelled', $up_team_statuses, true ), [ 'statuses' => $up_team_statuses ] );
+	remove_filter( 'fluent_crm/is_simulated_mail', $up_capture, 1 );
+	null === $guard_up_backup ? delete_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION ) : update_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION, $guard_up_backup, true );
+
+	$gate_triggers = new ReflectionClassConstant( \CustomCRM\Email\CollisionGate::class, 'CART_TRIGGERS' );
+	t402_check( 'collision gate holds onboarding emails for the upgrade automation too', in_array( 'fc_ab_cart_simulation_edd_upgrade', (array) $gate_triggers->getValue(), true ) );
+
+	// 14g. A real upgrade order through the recovery link: SL upgrades the license, and the linked cart
+	// is recovered. Runs last: it moves the fixture license to the new plan.
+	$sibling   = $make( 'realsibling', 'processing' );
+	$real      = $make( 'realupgrade', 'processing' );
+	$real_run  = $start_run( $real );
+	$_COOKIE['fc_ab_edd_cart_token'] = $real->checkout_key;
+	$recurring = [];
+	foreach ( $wp_filter['edd_sl_license_upgraded']->callbacks ?? [] as $priority => $callbacks ) {
+		foreach ( $callbacks as $cb ) {
+			if ( is_array( $cb['function'] ) && 'cancel_subscription_on_upgrade' === $cb['function'][1] ) {
+				remove_action( 'edd_sl_license_upgraded', $cb['function'], $priority );
+				$recurring[] = [ $cb['function'], $priority, $cb['accepted_args'] ];
+			}
+		}
+	}
+	$real_order = t402_order( $real->email, $download_id, 2, null, [ 'is_upgrade' => true, 'upgrade_id' => $tier_id, 'license_id' => (int) $license->ID, 'cost' => $today ] );
+	foreach ( $recurring as [ $fn, $priority, $args ] ) {
+		add_action( 'edd_sl_license_upgraded', $fn, $priority, $args );
+	}
+	$tracker->closeRenewedCarts();
+	$reset_statics();
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+	$real        = AbandonCartModel::find( $real->id );
+	$license_now = edd_software_licensing()->get_license( $license->ID );
+	t402_check(
+		'end to end: SL upgraded the license and the linked cart is recovered by its own order',
+		2 === (int) $license_now->price_id && 'recovered' === $real->status && (int) $real->order_id === $real_order && 'cancelled' === $run_row( $real_run )->status && 'Cancelled because the contact upgraded' === $run_row( $real_run )->notes,
+		[ 'license_price' => $license_now->price_id, 'status' => $real->status, 'order' => $real->order_id, 'expected_order' => $real_order, 'run' => $run_row( $real_run ) ]
+	);
+	t402_check( 'end to end: the same-term upgrade kept the renewal date', (int) $license_now->expiration === (int) $license->expiration, [ (int) $license_now->expiration, (int) $license->expiration ] );
+	$sibling = AbandonCartModel::find( $sibling->id );
+	t402_check( 'end to end: another running upgrade cart for the license is recovered as upgraded elsewhere', 'recovered' === $sibling->status && 'Upgraded outside the recovery link' === $sibling->note, [ $sibling->status, $sibling->note ] );
 } catch ( Throwable $e ) {
 	t402_check( 'no exception', false, get_class( $e ) . ': ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine() );
 } finally {
 	edd_empty_cart();
+	unset( $_COOKIE['fc_ab_edd_cart_token'] );
+	foreach ( [ 'renewed_licenses', 'upgraded_licenses' ] as $static ) {
+		$prop = new ReflectionProperty( EddCartTracking::class, $static );
+		$prop->setAccessible( true );
+		$prop->setValue( null, [] );
+	}
+	if ( $ab_backup_set ) {
+		null === $ab_backup ? delete_option( '_fc_ab_cart_settings' ) : update_option( '_fc_ab_cart_settings', $ab_backup );
+		\FluentCrm\App\Modules\AbandonCart\AbCartHelper::getSettings( false );
+	}
+	// Licenses: the ones the checks made, plus any issued for a t402 order.
+	$licenses = array_unique( array_merge(
+		array_map( 'intval', $licenses ),
+		array_map( 'intval', $wpdb->get_col( "SELECT l.id FROM {$p}edd_licenses l JOIN {$p}edd_orders o ON o.id = l.payment_id WHERE o.email LIKE 't402-%'" ) )
+	) );
+	foreach ( $licenses as $license_id ) {
+		$license = edd_software_licensing()->get_license( $license_id );
+		if ( $license ) {
+			$license->delete();
+		}
+	}
+	// Automations imported by the checks, with only the email campaigns their own steps point at.
+	foreach ( array_map( 'intval', $wpdb->get_col( "SELECT id FROM {$p}fc_funnels WHERE title LIKE 'T402 %'" ) ) as $funnel_id ) {
+		$campaign_ids = [];
+		foreach ( \FluentCrm\App\Models\FunnelSequence::where( 'funnel_id', $funnel_id )->where( 'action_name', 'send_custom_email' )->get() as $step ) {
+			$campaign_ids[] = (int) ( $step->settings['reference_campaign'] ?? 0 );
+		}
+		$campaign_ids = array_values( array_filter( array_unique( $campaign_ids ) ) );
+		if ( $campaign_ids ) {
+			$wpdb->query( "DELETE FROM {$p}fc_campaign_emails WHERE campaign_id IN (" . implode( ',', $campaign_ids ) . ')' );
+			$wpdb->query( "DELETE FROM {$p}fc_campaigns WHERE id IN (" . implode( ',', $campaign_ids ) . ')' );
+		}
+		foreach ( [ 'fc_funnel_sequences', 'fc_funnel_subscribers', 'fc_funnel_metrics' ] as $table ) {
+			$wpdb->delete( $p . $table, [ 'funnel_id' => $funnel_id ] );
+		}
+		$wpdb->delete( "{$p}fc_meta", [ 'object_type' => 'FluentCrm\\App\\Models\\Funnel', 'object_id' => $funnel_id ] );
+		$wpdb->delete( "{$p}fc_funnels", [ 'id' => $funnel_id ] );
+	}
 	// Sweep by marker, so a crashed earlier run is cleaned up too.
 	$emails = array_unique( array_merge(
 		$emails,
@@ -620,9 +1172,12 @@ katz.co",
 		edd_destroy_order( (int) $order_id );
 	}
 	$left = [
-		'carts'    => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}fc_abandoned_carts WHERE email LIKE 't402-%'" ),
-		'contacts' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}fc_subscribers WHERE email LIKE 't402-%'" ),
-		'orders'   => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}edd_orders WHERE email LIKE 't402-%'" ),
+		'carts'     => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}fc_abandoned_carts WHERE email LIKE 't402-%'" ),
+		'contacts'  => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}fc_subscribers WHERE email LIKE 't402-%'" ),
+		'orders'    => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}edd_orders WHERE email LIKE 't402-%'" ),
+		'customers' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}edd_customers WHERE email LIKE 't402-%'" ),
+		'licenses'  => $licenses ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}edd_licenses WHERE id IN (" . implode( ',', $licenses ) . ')' ) : 0,
+		'funnels'   => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}fc_funnels WHERE title LIKE 'T402 %'" ),
 	];
 	t402_check( 'cleanup left nothing', ! array_filter( $left ), $left );
 }
