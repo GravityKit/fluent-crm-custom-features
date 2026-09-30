@@ -129,12 +129,21 @@ class EddCartDriver extends AbstractCartDriver {
 	}
 
 	/**
+	 * Days during which a contact who entered this provider's automation does not get it again.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	protected function resendCapDays( AbandonCartModel $cart ): int {
+		return (int) apply_filters( 'customcrm/edd_ab_cart/resend_cap_days', self::RESEND_CAP_DAYS, $cart );
+	}
+
+	/**
 	 * Whether this contact entered this provider's automation, or got Recapture's cart emails, within the resend cap.
 	 *
 	 * @param AbandonCartModel $cart
 	 */
 	protected function sentRecently( AbandonCartModel $cart ): bool {
-		$cap_days = (int) apply_filters( 'customcrm/edd_ab_cart/resend_cap_days', self::RESEND_CAP_DAYS, $cart );
+		$cap_days = $this->resendCapDays( $cart );
 
 		if ( $cap_days <= 0 || ! $cart->email ) {
 			return false;
@@ -142,6 +151,20 @@ class EddCartDriver extends AbstractCartDriver {
 
 		if ( PriorRecipients::lastSentAt( $cart->email ) >= time() - ( $cap_days * DAY_IN_SECONDS ) ) {
 			return true;
+		}
+
+		return $this->enteredAutomationWithin( $cart, $cap_days );
+	}
+
+	/**
+	 * Whether this contact entered this provider's automation in the last `$cap_days` days.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @param int              $cap_days
+	 */
+	protected function enteredAutomationWithin( AbandonCartModel $cart, int $cap_days ): bool {
+		if ( $cap_days <= 0 || ! $cart->email ) {
+			return false;
 		}
 
 		$contact = FluentCrmApi( 'contacts' )->getContact( $cart->email );

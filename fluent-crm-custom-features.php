@@ -162,8 +162,9 @@ add_action(
 		}
 
 		\FluentCrm\App\Modules\AbandonCart\Drivers\DriverManager::register( new \CustomCRM\AbandonCart\Edd\EddCartDriver() );
-		// License renewals left at checkout get their own provider, trigger and automation.
+		// License renewals and upgrades left at checkout each get their own provider, trigger and automation.
 		\FluentCrm\App\Modules\AbandonCart\Drivers\DriverManager::register( new \CustomCRM\AbandonCart\Edd\EddRenewalCartDriver() );
+		\FluentCrm\App\Modules\AbandonCart\Drivers\DriverManager::register( new \CustomCRM\AbandonCart\Edd\EddUpgradeCartDriver() );
 	}
 );
 

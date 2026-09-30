@@ -70,7 +70,7 @@ class EddRenewalCartDriver extends EddCartDriver {
 		$renewals = array_filter(
 			Arr::get( $cart->cart, 'cart_contents', [] ),
 			function ( $item ) {
-				return ! empty( $item['license_id'] );
+				return ! empty( $item['license_id'] ) && empty( $item['is_upgrade'] );
 			}
 		);
 
