@@ -67,7 +67,8 @@ EMAILS = [
         + raw(EXTRAS)
         + para("Not sure it covers what you need? Reply and tell us what you’re building. We’ll tell you whether "
                "the upgrade helps.")
-        + para('You’re also covered by our <a href="' + REFUNDS + '">30-day refund policy</a>.')
+        + para('Upgrades are covered by our <a href="' + REFUNDS + '">30-day refund policy</a>: if the new plan '
+               'isn’t right for you, we’ll refund the upgrade and move you back to your current plan.')
         + button("See My Upgrade", URL)
         + SIGN
         + para("P.S. " + PS_CALL),
