@@ -1221,7 +1221,7 @@ class EddCartTracking {
 				'{{' . $group . '.price_breakdown}}'   => __( 'Price Breakdown (three lines)', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.price_change_line}}' => __( 'Whether the Price Goes Up or Down Each Day', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.renewal_line}}'      => __( 'What Happens to the Renewal Date', 'fluent-crm-custom-features' ),
-				'{{' . $group . '.renewal_soon_line}}' => __( 'Renews-Soon Line (empty unless the license renews within 30 days)', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.renewal_soon_line}}' => __( 'Renews-Soon Paragraph (empty unless the license renews within 30 days)', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.new_plan_extras}}'   => __( 'What the New Plan Adds (bullet list)', 'fluent-crm-custom-features' ),
 			];
 		}
