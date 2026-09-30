@@ -497,7 +497,9 @@ class EddUpgradeCartDriver extends EddCartDriver {
 		$_GET['currency'] = $currency;
 
 		try {
-			$result = $calculate();
+			// Multi Currency ignores `?currency=` in some contexts (wp-admin, some AJAX actions).
+			$is_selected = edd_get_currency() === $currency;
+			$result      = $is_selected ? $calculate() : null;
 		} finally {
 			if ( $had_get ) {
 				$_GET['currency'] = $previous_get;
@@ -507,6 +509,11 @@ class EddUpgradeCartDriver extends EddCartDriver {
 			EDD()->session->set( 'currency', $previous_session );
 		}
 		// phpcs:enable
+
+		if ( ! $is_selected ) {
+			// Priced in whatever currency is selected here, and labelled with it.
+			return [ $calculate(), (string) edd_get_currency() ];
+		}
 
 		return [ $result, $currency ];
 	}

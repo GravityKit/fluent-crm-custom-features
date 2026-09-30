@@ -703,7 +703,7 @@ class EddCartTracking {
 			$cart_licenses = array_filter( array_map( 'intval', wp_list_pluck( $renewal_items, 'license_id' ) ) );
 			$cart_upgrades = array_intersect_key( $upgraded, array_flip( $cart_licenses ) );
 
-			if ( ! array_intersect( $cart_licenses, $license_ids ) || ! $driver->allLicensesRenewed( $cart, array_keys( $cart_upgrades ) ) ) {
+			if ( self::wasStopped( $cart ) || ! array_intersect( $cart_licenses, $license_ids ) || ! $driver->allLicensesRenewed( $cart, array_keys( $cart_upgrades ) ) ) {
 				continue;
 			}
 
@@ -767,7 +767,7 @@ class EddCartTracking {
 		foreach ( $this->openOrRecentlyLostCarts( EddUpgradeCartDriver::PROVIDER ) as $cart ) {
 			$cart_upgrades = array_intersect_key( $upgraded, array_flip( EddUpgradeCartDriver::upgradeLicenseIds( $cart ) ) );
 
-			if ( ! $cart_upgrades ) {
+			if ( ! $cart_upgrades || self::wasStopped( $cart ) ) {
 				continue;
 			}
 
@@ -851,9 +851,23 @@ class EddCartTracking {
 			return;
 		}
 
+		$data                    = $cart->cart ?: [];
+		$data['stopped_because'] = $why;
+
 		$cart->status = 'lost';
 		$cart->note   = $why;
+		$cart->cart   = $data;
 		$cart->save();
+	}
+
+	/**
+	 * Whether a cart was stopped on purpose (dropUpgradeCart()). A stopped cart never counts as
+	 * recovered, even when its license is upgraded or renewed later.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	private static function wasStopped( AbandonCartModel $cart ): bool {
+		return ! empty( Arr::get( $cart->cart, 'stopped_because' ) );
 	}
 
 	/**
@@ -996,6 +1010,11 @@ class EddCartTracking {
 
 	/**
 	 * Rebuild the EDD cart from a recovery link, apply its recovery discount, and go to checkout.
+	 *
+	 * Coupons: the codes the shopper entered before leaving stay on the rebuilt cart, for every
+	 * provider. Our own codes (a code named in the link, or one this cart was sent) are added only
+	 * to new-purchase carts, never to renewal or upgrade carts. So for a renewal or upgrade the
+	 * checkout can be lower than the email's "You pay today", never higher.
 	 *
 	 * @param array<string,mixed> $data Query vars from FluentCRM's external-page router.
 	 */
