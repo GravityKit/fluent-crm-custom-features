@@ -22,6 +22,7 @@ class CollisionGate {
 	private const CART_TRIGGERS = [
 		'fc_ab_cart_simulation_edd',
 		'fc_ab_cart_simulation_edd_renewal',
+		'fc_ab_cart_simulation_edd_upgrade',
 	];
 
 	private const HOLD_HOURS = 24;
@@ -216,7 +217,7 @@ class CollisionGate {
 	}
 
 	/**
-	 * Cart, renewal-cart and pre-renewal automations: never held, and they hold the others.
+	 * Cart, renewal-cart, upgrade-cart and pre-renewal automations: never held, and they hold the others.
 	 *
 	 * @param Funnel $automation The automation an email came from.
 	 */
