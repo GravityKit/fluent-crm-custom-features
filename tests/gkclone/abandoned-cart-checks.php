@@ -1194,6 +1194,9 @@ katz.co",
 	t402_check( 'code: renewal_line, different term: the date SL\'s upgrade handler would set', 'Your license will then renew on ' . date_i18n( $date_fmt, $sl_new_expiry ) . '.' === $term_line, [ 'got' => $term_line, 'expected_date' => date_i18n( $date_fmt, $sl_new_expiry ) ] );
 
 	$aa_cart = $make( 'codesaa', 'processing', [ 'upgrade_id' => $aa_id ] );
+	t402_check( 'code: new_plan_name for a bigger tier of the same product', 'the bigger GravityImport plan' === $code( $code_cart, 'new_plan_name' ), $code( $code_cart, 'new_plan_name' ) );
+	t402_check( 'code: new_plan_name for another product', 'All Access Pass' === $code( $aa_cart, 'new_plan_name' ), $code( $aa_cart, 'new_plan_name' ) );
+	t402_check( 'code: current_product is the product title with no site count', 'GravityImport' === $code( $code_cart, 'current_product' ) && 'GravityImport' === $code( $aa_cart, 'current_product' ), [ $code( $code_cart, 'current_product' ), $code( $aa_cart, 'current_product' ) ] );
 	t402_check( 'code: new_plan_extras for All Access', false !== strpos( $code( $aa_cart, 'new_plan_extras' ), 'every GravityKit plugin, with all updates and support' ), $code( $aa_cart, 'new_plan_extras' ) );
 
 	$saved_expiration    = (int) $license->expiration;
@@ -1257,7 +1260,43 @@ katz.co",
 	};
 	$unparsed = array_filter( $rendered, function ( $r ) { return false !== strpos( $r['subject'] . $r['body'], 'ab_cart_edd_upgrade' ); } );
 	t402_check( 'render: no upgrade smart code left unparsed in the 3 emails', 3 === count( $rendered ) && ! $unparsed, array_map( function ( $r ) { return $r['subject']; }, $rendered ) );
-	t402_check( 'render: email 1 subject names the new plan', 'Your upgrade to ' . $plan_name( $download_id, 2 ) . ' is saved' === $rendered[0]['subject'], $rendered[0]['subject'] );
+	// The same three emails for an All Access upgrade.
+	$render_aa_contact = FluentCrmApi( 'contacts' )->createOrUpdate( [ 'email' => t402_email( 'renderaa' ), 'first_name' => 'Tess', 'status' => 'subscribed' ] );
+	$make( 'renderaa', 'processing', [ 'upgrade_id' => $aa_id ], $render_aa_contact->email );
+	$rendered_aa = [];
+	foreach ( $up_campaigns as $campaign ) {
+		$rendered_aa[] = [
+			'subject' => \FluentCrm\App\Services\Libs\Parser\Parser::parse( $campaign->email_subject, $render_aa_contact ),
+			'body'    => \FluentCrm\App\Services\Libs\Parser\Parser::parse( $campaign->email_body, $render_aa_contact ),
+		];
+	}
+	if ( getenv( 'T402_DUMP' ) ) {
+		file_put_contents( '/tmp/t402-rendered-aa.json', wp_json_encode( $rendered_aa, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
+	}
+	$tier_sentences = [
+		'Your upgrade to the bigger GravityImport plan is saved' === $rendered[0]['subject'],
+		'Is the bigger GravityImport plan right for you?' === $rendered[1]['subject'],
+		false !== strpos( $rendered[0]['body'], 'Looks like you didn’t finish upgrading to the bigger GravityImport plan. It’s saved' ),
+		false !== strpos( $rendered[0]['body'], 'You get credit for your current GravityImport license, so the upgrade is just ' . $fmt( $today ) . ' today.' ),
+		false !== strpos( $rendered[1]['body'], 'Still thinking about the bigger GravityImport plan? With it, you’d get:' ),
+		false !== strpos( $rendered[2]['body'], 'Upgrading to the bigger GravityImport plan is ' . $fmt( $today ) . ' today, with credit for your current GravityImport license.' ),
+	];
+	t402_check( 'render, bigger tier: subjects and sentences name "the bigger GravityImport plan"', ! in_array( false, $tier_sentences, true ), [ 'results' => $tier_sentences, 'subjects' => wp_list_pluck( $rendered, 'subject' ) ] );
+	$aa_sentences = [
+		'Your upgrade to All Access Pass is saved' === $rendered_aa[0]['subject'],
+		'Is All Access Pass right for you?' === $rendered_aa[1]['subject'],
+		false !== strpos( $rendered_aa[0]['body'], 'Looks like you didn’t finish upgrading to All Access Pass. It’s saved' ),
+		false !== strpos( $rendered_aa[0]['body'], 'You get credit for your current GravityImport license, so the upgrade is just ' ),
+		false !== strpos( $rendered_aa[1]['body'], 'Still thinking about All Access Pass? With it, you’d get:' ),
+		false !== strpos( $rendered_aa[2]['body'], 'Upgrading to All Access Pass is ' ) && false !== strpos( $rendered_aa[2]['body'], ' today, with credit for your current GravityImport license.' ),
+	];
+	t402_check( 'render, All Access: subjects and sentences name "All Access Pass"', ! in_array( false, $aa_sentences, true ), [ 'results' => $aa_sentences, 'subjects' => wp_list_pluck( $rendered_aa, 'subject' ) ] );
+	// Plan names with a site count use an em dash ("GravityImport — Single Site"); none may appear.
+	$with_site_count = array_filter( array_merge( $rendered, $rendered_aa ), function ( $r ) {
+		return false !== strpos( $r['subject'] . wp_strip_all_tags( $r['body'] ), '—' );
+	} );
+	t402_check( 'render: no plan name with a site count in any subject or body (both fixtures)', ! $with_site_count, wp_list_pluck( $with_site_count, 'subject' ) );
+	t402_check( 'render: email 2 still lists the tier change', false !== strpos( $rendered[1]['body'], 'Up to 3 Sites, instead of Single Site' ) );
 	$email1_text = wp_strip_all_tags( $rendered[0]['body'] );
 	t402_check(
 		'render: email 1 has today\'s price with the credit and renewal sentence, and a recovery link',
