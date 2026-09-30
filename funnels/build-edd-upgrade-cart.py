@@ -4,7 +4,7 @@
 Import it in FluentCRM > Automations > Import. It imports as a draft; nothing sends until it is
 published and the "Easy Digital Downloads (license upgrades)" abandoned-cart provider is enabled.
 
-Three emails, no discount. Every price comes from a smart code worked out when the email is sent,
+Three emails, no discount. The price comes from a smart code worked out when the email is sent,
 because the upgrade price changes every day. The run stops when the license is upgraded or
 renewed, when a renewal cart for it starts, or when the contact completes another paid order.
 
@@ -18,8 +18,7 @@ NAME = "{{contact.first_name|there}}"
 URL = "##" + G + ".recovery_url##"
 CURRENT = "{{" + G + ".current_plan|your current plan}}"
 NEW = "{{" + G + ".new_plan|your new plan}}"
-BREAKDOWN = "{{" + G + ".price_breakdown}}"
-PRICE_CHANGE = "{{" + G + ".price_change_line}}"
+TODAY = "{{" + G + ".today_price}}"
 RENEWAL = "{{" + G + ".renewal_line}}"
 RENEWAL_SOON = "{{" + G + ".renewal_soon_line}}"
 EXTRAS = "{{" + G + ".new_plan_extras}}"
@@ -41,52 +40,49 @@ EMAILS = [
         "Upgrade email 1: Your upgrade is saved",
         60, "minutes",
         "Your upgrade to " + NEW + " is saved",
-        "Here’s how the upgrade price works.",
+        "Pick up right where you left off.",
         header()
-        + greeting("Hi " + NAME + ",")
-        + para("You started upgrading from " + CURRENT + " to " + NEW + ", and we saved it for you.")
-        + button("Finish Upgrading", URL)
-        + para("The price can look odd, so here’s how it works:")
-        + raw(BREAKDOWN)
-        + para(PRICE_CHANGE)
-        # Ends with "You won’t be charged twice." when there is a date to give; empty otherwise.
-        + para(RENEWAL)
-        + para("If something went wrong at checkout, just reply and we’ll fix it.")
+        + greeting("Hey " + NAME + ",")
+        + para("Looks like you didn’t finish upgrading to " + NEW + ". It’s saved, so you can pick up where you "
+               "left off:")
+        + button("Finish My Upgrade", URL)
+        + para("You get credit for the time left on your " + CURRENT + " license, so the upgrade is just " + TODAY
+               + " today. " + RENEWAL)
+        + para("If anything went wrong at checkout, just reply and we’ll sort it out.")
         + SIGN
         + para("P.S. " + PS_CALL),
         "upgrade-cart-1",
     ),
     (
-        "Upgrade email 2: Is it the right fit?",
+        "Upgrade email 2: Is it right for you?",
         2, "days",
-        "Is " + NEW + " the right fit?",
-        "What changes for you with the bigger plan.",
+        "Is " + NEW + " right for you?",
+        "A quick question about your upgrade.",
         header()
-        + greeting("Hi " + NAME + ",")
-        + para("Moving to a bigger plan is a real decision, so here’s what changes for you. With " + NEW
-               + " you also get:")
+        + greeting("Hey " + NAME + ",")
+        + para("Still thinking about " + NEW + "? With it, you’d get:")
         + raw(EXTRAS)
-        + para("Not sure it covers what you need? Reply and tell us what you’re building. We’ll tell you whether "
-               "the upgrade helps.")
-        + para('Upgrades are covered by our <a href="' + REFUNDS + '">30-day refund policy</a>: if the new plan '
-               'isn’t right for you, we’ll refund the upgrade and move you back to your current plan.')
+        + para("Not sure it fits what you’re building? Reply and tell us about your project. We’ll give you a "
+               "straight answer, even if the answer is “you don’t need it.”")
+        + para('And upgrades are covered by our <a href="' + REFUNDS + '">30-day money-back guarantee</a>.')
         + button("See My Upgrade", URL)
         + SIGN
         + para("P.S. " + PS_CALL),
         "upgrade-cart-2",
     ),
     (
-        "Upgrade email 3: Need approval?",
+        "Upgrade email 3: Run it by someone",
         3, "days",
-        "Need someone else to approve your upgrade?",
-        "Here’s the price as of today, ready to forward.",
+        "Need to run your upgrade by someone?",
+        "Forward this to whoever approves purchases.",
         header()
-        + greeting("Hi " + NAME + ",")
-        + para("If someone else needs to approve this, forward them this email. Here’s the price as of today:")
-        + raw(BREAKDOWN)
-        + para(RENEWAL_SOON)
-        + para("This is our last email about it. Your saved upgrade is here if you want it:")
-        + button("Finish Upgrading", URL)
+        + greeting("Hey " + NAME + ",")
+        + para("If someone else approves purchases, feel free to forward them this email. Upgrading to " + NEW
+               + " is " + TODAY + " today, with credit for the time left on your " + CURRENT + " license.")
+        # Its own <p> when the license renews within 30 days; empty otherwise, so nothing is left behind.
+        + raw(RENEWAL_SOON)
+        + para("This is the last reminder we’ll send about it:")
+        + button("Finish My Upgrade", URL)
         + SIGN
         + para("P.S. " + PS_CALL),
         "upgrade-cart-3",
