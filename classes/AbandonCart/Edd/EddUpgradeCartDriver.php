@@ -323,9 +323,10 @@ class EddUpgradeCartDriver extends EddCartDriver {
 			case 'today_price':
 				return $this->formatForCart( $this->todayPrice( $item ), $cart );
 			case 'credit':
-				return $this->formatForCart( $this->credit( $item, $new_download, $new_price_id ), $cart );
+				$lines = $this->priceLines( $cart, $license, $item, $path );
+				return $this->formatPrice( $lines['credit'], $lines['currency'] );
 			case 'price_breakdown':
-				return $this->priceBreakdown( $cart, $item, $new_download, $new_price_id );
+				return $this->priceBreakdown( $cart, $license, $item, $path );
 			case 'price_change_line':
 				return esc_html( $this->priceChangeLine( $license, $path, $new_download, $new_price_id ) );
 			case 'renewal_line':
@@ -372,58 +373,158 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	}
 
 	/**
-	 * The new plan's regular price minus today's price, never below zero.
-	 *
-	 * @param array<string,mixed> $item
-	 * @param int                 $new_download
-	 * @param int|null            $new_price_id
-	 */
-	private function credit( array $item, int $new_download, ?int $new_price_id ): float {
-		return max( 0, self::regularPrice( $new_download, $new_price_id ) - $this->todayPrice( $item ) );
-	}
-
-	/**
 	 * Formats a store-currency amount in the cart's currency, converting it when EDD Multi Currency is active.
 	 *
 	 * @param float            $amount Amount in the store currency.
 	 * @param AbandonCartModel $cart
 	 */
 	private function formatForCart( float $amount, AbandonCartModel $cart ): string {
-		$currency   = (string) ( $cart->currency ?: edd_get_currency() );
-		$store      = (string) edd_get_currency();
-		$can_switch = $currency !== $store && class_exists( '\\EDD_Multi_Currency\\Utils\\Currency' );
-
-		if ( $can_switch ) {
-			try {
-				$amount = (float) \EDD_Multi_Currency\Utils\Currency::convert( $amount, $currency );
-			} catch ( \Exception $e ) {
-				$currency = $store;
-			}
-		} elseif ( $currency !== $store ) {
-			$currency = $store;
-		}
+		[ $amount, $currency ] = $this->toCartCurrency( $amount, $cart );
 
 		return $this->formatPrice( $amount, $currency );
 	}
 
 	/**
-	 * Three lines: the new plan's price, the credit for the current plan, and what is due today.
+	 * Converts a store-currency amount to the cart's currency when EDD Multi Currency is active.
+	 *
+	 * @param float            $amount Amount in the store currency.
+	 * @param AbandonCartModel $cart
+	 * @return array{0: float, 1: string} Amount and the currency it is in.
+	 */
+	private function toCartCurrency( float $amount, AbandonCartModel $cart ): array {
+		$currency   = (string) ( $cart->currency ?: edd_get_currency() );
+		$store      = (string) edd_get_currency();
+		$can_switch = $currency !== $store && class_exists( '\\EDD_Multi_Currency\\Utils\\Currency' );
+
+		if ( ! $can_switch ) {
+			return [ $amount, $store ];
+		}
+
+		try {
+			return [ (float) \EDD_Multi_Currency\Utils\Currency::convert( $amount, $currency ), $currency ];
+		} catch ( \Exception $e ) {
+			return [ $amount, $store ];
+		}
+	}
+
+	/**
+	 * The breakdown's three amounts, in the cart's currency and rounded to the currency's decimals.
+	 *
+	 * Today's price is Software Licensing's own cost, filters and rounding included. The first line
+	 * is the new plan's price for what SL charges: the rest of the current term when SL prorates by
+	 * time and the new plan has a term, otherwise the full price. The credit is the difference, so
+	 * the lines always add up to what the customer pays.
 	 *
 	 * @param AbandonCartModel    $cart
-	 * @param array<string,mixed> $item
-	 * @param int                 $new_download
-	 * @param int|null            $new_price_id
+	 * @param \EDD_SL_License     $license
+	 * @param array<string,mixed> $item Stored upgrade cart item.
+	 * @param array<string,mixed> $path Upgrade path.
+	 * @return array{new_plan: float, credit: float, today: float, currency: string, time_based: bool, until_expiration: bool}
 	 */
-	private function priceBreakdown( AbandonCartModel $cart, array $item, int $new_download, ?int $new_price_id ): string {
-		$lines = [
-			sprintf( '%s: %s', self::planName( $new_download, $new_price_id ), $this->formatForCart( self::regularPrice( $new_download, $new_price_id ), $cart ) ),
-			/* translators: %s: credit amount */
-			sprintf( __( 'Credit for your current plan: −%s', 'fluent-crm-custom-features' ), $this->formatForCart( $this->credit( $item, $new_download, $new_price_id ), $cart ) ),
+	private function priceLines( AbandonCartModel $cart, $license, array $item, array $path ): array {
+		$new_download = (int) $path['download_id'];
+		$new_price_id = isset( $path['price_id'] ) && is_numeric( $path['price_id'] ) ? (int) $path['price_id'] : null;
+		$full_price   = self::regularPrice( $new_download, $new_price_id );
+		$seconds_used = self::secondsUsedIfProratedByTime( $license, $path, $full_price );
+		$new_length   = edd_sl_get_product_license_length( $new_download, $new_price_id ?? false );
+		$until_expiry = null !== $seconds_used && 'lifetime' !== $new_length;
+		$new_plan     = $full_price;
+
+		if ( $until_expiry ) {
+			// Same arithmetic as edd_sl_get_time_based_pro_rated_upgrade_cost().
+			$midnight_today = strtotime( 'today midnight' );
+			$new_seconds    = strtotime( $new_length, $midnight_today ) - $midnight_today;
+			$new_plan       = $full_price * abs( 1 - $seconds_used / $new_seconds );
+		}
+
+		$decimals = (int) edd_currency_decimal_filter();
+
+		[ $new_plan, $currency ] = $this->toCartCurrency( $new_plan, $cart );
+		[ $today ]               = $this->toCartCurrency( $this->todayPrice( $item ), $cart );
+
+		$new_plan = round( $new_plan, $decimals );
+		$today    = round( $today, $decimals );
+
+		return [
+			'new_plan'         => $new_plan,
+			'credit'           => round( $new_plan - $today, $decimals ),
+			'today'            => $today,
+			'currency'         => $currency,
+			'time_based'       => null !== $seconds_used,
+			'until_expiration' => $until_expiry,
+		];
+	}
+
+	/**
+	 * How much of the current term is used, when SL prices this upgrade by time; null when SL
+	 * falls back to cost-based pricing (or does not prorate the path at all).
+	 *
+	 * Mirrors edd_sl_get_license_upgrade_cost() and edd_sl_get_time_based_pro_rated_upgrade_cost()
+	 * in Software Licensing 3.9.5: cost-based when the path is not prorated, the method is
+	 * cost-based, the license is lifetime, or it was bought within the minimum time (a day).
+	 *
+	 * @param \EDD_SL_License     $license
+	 * @param array<string,mixed> $path       Upgrade path.
+	 * @param float               $full_price The new plan's regular price.
+	 * @return int|null Seconds.
+	 */
+	private static function secondsUsedIfProratedByTime( $license, array $path, float $full_price ): ?int {
+		if ( empty( $path['pro_rated'] ) ) {
+			return null;
+		}
+
+		$old_price = (float) ( edd_has_variable_prices( $license->download_id ) ? edd_get_price_option_amount( $license->download_id, $license->price_id ) : edd_get_download_price( $license->download_id ) );
+		$method    = apply_filters( 'edd_sl_proration_method', edd_get_option( 'edd_sl_proration_method', 'cost-based' ), $license->ID, $old_price, $full_price );
+		$is_simple = 'cost-based' === $method || apply_filters( 'edd_sl_license_upgrade_pro_rate_simple', false );
+
+		if ( $is_simple || $license->is_lifetime ) {
+			return null;
+		}
+
+		$license_length = edd_software_licensing()->get_license_length( $license->ID, $license->payment_id, $license->download_id );
+		$midnight_today = strtotime( 'today midnight' );
+		$length_seconds = strtotime( $license_length, $midnight_today ) - $midnight_today;
+		$seconds_left   = absint( edd_software_licensing()->get_license_expiration( $license->ID ) - time() + ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS ) );
+		$seconds_used   = $length_seconds - $seconds_left;
+		$minimum_time   = apply_filters( 'edd_sl_get_time_based_pro_rated_minimum_time', DAY_IN_SECONDS );
+		$within_minimum = $minimum_time >= $seconds_used;
+
+		return $within_minimum ? null : (int) $seconds_used;
+	}
+
+	/**
+	 * Three lines that add up: the new plan's price, the credit, and what is due today.
+	 *
+	 * @param AbandonCartModel    $cart
+	 * @param \EDD_SL_License     $license
+	 * @param array<string,mixed> $item
+	 * @param array<string,mixed> $path
+	 */
+	private function priceBreakdown( AbandonCartModel $cart, $license, array $item, array $path ): string {
+		$lines        = $this->priceLines( $cart, $license, $item, $path );
+		$new_price_id = isset( $path['price_id'] ) && is_numeric( $path['price_id'] ) ? (int) $path['price_id'] : null;
+		$new_plan     = self::planName( (int) $path['download_id'], $new_price_id );
+		$current_plan = self::planName( (int) $license->download_id, $license->price_id );
+
+		if ( $lines['until_expiration'] ) {
+			/* translators: 1: new plan, 2: date the current term ends */
+			$new_plan = sprintf( __( '%1$s until %2$s', 'fluent-crm-custom-features' ), $new_plan, self::formatExpiration( (int) $license->expiration ) );
+		}
+
+		$credit_label = $lines['time_based']
+			/* translators: %s: current plan */
+			? sprintf( __( 'Credit for the unused time on %s', 'fluent-crm-custom-features' ), $current_plan )
+			/* translators: %s: current plan */
+			: sprintf( __( 'Credit for %s', 'fluent-crm-custom-features' ), $current_plan );
+
+		$rows = [
+			sprintf( '%s: %s', $new_plan, $this->formatPrice( $lines['new_plan'], $lines['currency'] ) ),
+			sprintf( '%s: −%s', $credit_label, $this->formatPrice( $lines['credit'], $lines['currency'] ) ),
 			/* translators: %s: amount due today */
-			'<strong>' . sprintf( __( 'You pay today: %s', 'fluent-crm-custom-features' ), $this->formatForCart( $this->todayPrice( $item ), $cart ) ) . '</strong>',
+			'<strong>' . sprintf( __( 'You pay today: %s', 'fluent-crm-custom-features' ), $this->formatPrice( $lines['today'], $lines['currency'] ) ) . '</strong>',
 		];
 
-		return '<p class="customcrm-upgrade-price" style="margin:0 0 16px;line-height:1.8">' . implode( '<br>', $lines ) . '</p>';
+		return '<p class="customcrm-upgrade-price" style="margin:0 0 16px;line-height:1.8">' . implode( '<br>', $rows ) . '</p>';
 	}
 
 	/**
