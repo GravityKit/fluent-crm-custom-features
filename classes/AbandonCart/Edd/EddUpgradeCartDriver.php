@@ -455,27 +455,14 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	}
 
 	/**
-	 * What happens to the renewal date, using Software Licensing's own rule for upgrades.
-	 *
-	 * The new plan is lifetime: no more renewals. Same term length: the date stays. A different
-	 * term: the new length counted from the license's latest payment (edd_sl_process_license_upgrade()).
+	 * What happens to the renewal date: no more renewals, the date stays, or the new date.
 	 *
 	 * @param \EDD_SL_License $license
 	 * @param int             $new_download
 	 * @param int|null        $new_price_id
 	 */
 	private function renewalLine( $license, int $new_download, ?int $new_price_id ): string {
-		$new_expiration = function_exists( 'edd_sl_get_product_expiration_date' )
-			? edd_sl_get_product_expiration_date(
-				$license->download_id,
-				false,
-				[
-					'license_id'  => $license->ID,
-					'download_id' => $new_download,
-					'price_id'    => $new_price_id,
-				]
-			)
-			: false;
+		$new_expiration = self::expirationAfterUpgrade( $license, $new_download, $new_price_id );
 
 		if ( 'lifetime' === $new_expiration ) {
 			return __( 'Your new plan is a lifetime license, so there are no more renewals.', 'fluent-crm-custom-features' );
@@ -494,6 +481,45 @@ class EddUpgradeCartDriver extends EddCartDriver {
 
 		/* translators: %s: date */
 		return sprintf( __( 'Your license will renew on %s.', 'fluent-crm-custom-features' ), $date );
+	}
+
+	/**
+	 * The expiration the upgrade would give the license, by the rule in edd_sl_process_license_upgrade()
+	 * (Software Licensing 3.9.5, standard licenses).
+	 *
+	 * A lifetime price makes the license lifetime. The same term length keeps the expiration. A
+	 * different length counts the new length from the license's latest order (`date_created`), or
+	 * from now when the license had no expiration. SL's own edd_sl_get_product_expiration_date()
+	 * counts from the completed date instead, so it can disagree with the handler by a day.
+	 *
+	 * @param \EDD_SL_License $license
+	 * @param int             $new_download
+	 * @param int|null        $new_price_id
+	 * @return int|string|false Timestamp, `lifetime`, or false when it cannot be worked out.
+	 */
+	private static function expirationAfterUpgrade( $license, int $new_download, ?int $new_price_id ) {
+		$new_length = edd_sl_get_product_license_length( $new_download, $new_price_id ?? false );
+
+		if ( 'lifetime' === $new_length ) {
+			return 'lifetime';
+		}
+
+		$old_length   = $license->license_length();
+		$old_seconds  = 'lifetime' !== $old_length ? strtotime( $old_length ) : 'lifetime';
+		$length_moves = $old_seconds !== strtotime( $new_length );
+
+		if ( ! $length_moves ) {
+			return (int) $license->expiration;
+		}
+
+		if ( 'lifetime' === $old_length || empty( $license->expiration ) ) {
+			return strtotime( $new_length, current_time( 'timestamp' ) );
+		}
+
+		$payment_ids = (array) $license->payment_ids;
+		$last_order  = $payment_ids ? edd_get_order( (int) end( $payment_ids ) ) : false;
+
+		return $last_order ? strtotime( $new_length, strtotime( $last_order->date_created ) ) : false;
 	}
 
 	/**
