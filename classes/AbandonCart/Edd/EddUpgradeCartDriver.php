@@ -1,0 +1,595 @@
+<?php
+
+namespace CustomCRM\AbandonCart\Edd;
+
+use FluentCrm\App\Modules\AbandonCart\AbandonCartModel;
+use FluentCrm\Framework\Support\Arr;
+
+/**
+ * License upgrades left at an EDD checkout, as their own FluentCRM cart provider: the buyer is an
+ * existing customer, so they get their own automation and never the new-customer sequence or its
+ * discount.
+ *
+ * Every price in the emails is worked out when the email is sent, from the license and upgrade
+ * path stored on the cart: Software Licensing prorates upgrades by time, so the price drops a
+ * little every day.
+ */
+class EddUpgradeCartDriver extends EddCartDriver {
+
+	public const PROVIDER = 'edd_upgrade';
+
+	/**
+	 * Default days during which a contact who entered the upgrade automation does not get it again.
+	 * Filter: `customcrm/edd_ab_cart/upgrade_resend_cap_days`.
+	 */
+	private const RESEND_CAP_DAYS = 60;
+
+	/** A license expiring within this many days gets the "renew first, upgrade then" line. */
+	private const RENEWAL_SOON_DAYS = 30;
+
+	/** Order statuses that count as a completed, paid order. Refunded and revoked orders do not. */
+	private const PAID_ORDER_STATUSES = [ 'publish', 'complete', 'completed', 'partially_refunded' ];
+
+	/** Renewal cart statuses that mean a renewal is under way. */
+	private const OPEN_RENEWAL_STATUSES = [ 'draft', 'pending', 'processing' ];
+
+	/**
+	 * Smart codes that are empty once the upgrade can no longer be bought.
+	 */
+	private const PRICE_CODES = [ 'full_price', 'today_price', 'credit', 'price_breakdown', 'price_change_line', 'renewal_line' ];
+
+	/**
+	 * Provider key stored in `fc_abandoned_carts.provider`.
+	 *
+	 * @return string
+	 */
+	public function getProviderSlug() {
+		return self::PROVIDER;
+	}
+
+	/**
+	 * Provider name shown in FluentCRM settings and reports.
+	 *
+	 * @return string
+	 */
+	public function getProviderLabel() {
+		return __( 'Easy Digital Downloads (license upgrades)', 'fluent-crm-custom-features' );
+	}
+
+	/**
+	 * Whether EDD and EDD Software Licensing's upgrade functions are active.
+	 *
+	 * @return bool
+	 */
+	public function isAvailable() {
+		return parent::isAvailable() && function_exists( 'edd_software_licensing' ) && function_exists( 'edd_sl_get_license_upgrade_cost' );
+	}
+
+	/**
+	 * Registers the upgrade automation trigger.
+	 *
+	 * @return void
+	 */
+	public function registerAutomationTrigger() {
+		new EddUpgradeCartAutomationTrigger();
+	}
+
+	/**
+	 * Skip an upgrade cart when any of these hold:
+	 *
+	 * - its email is outside internal-only mode's domains;
+	 * - no license in it can still take its upgrade (already upgraded, or the path is gone);
+	 * - the contact completed a paid order after leaving the cart;
+	 * - a license in it is being renewed, or was renewed after the cart was saved (renewal wins);
+	 * - the contact entered this automation within the resend cap.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	public function isWithinCoolOffPeriod( AbandonCartModel $cart ) {
+		return AllowedDomains::holdBack( $cart )
+			|| ! $this->openUpgradeItems( $cart )
+			|| $this->paidOrderSince( $cart )
+			|| $this->renewalUnderWay( $cart )
+			|| $this->sentRecently( $cart );
+	}
+
+	/**
+	 * Days during which a contact who entered the upgrade automation does not get it again.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	protected function resendCapDays( AbandonCartModel $cart ): int {
+		return (int) apply_filters( 'customcrm/edd_ab_cart/upgrade_resend_cap_days', self::RESEND_CAP_DAYS, $cart );
+	}
+
+	/**
+	 * The cart's upgrade items.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function upgradeItems( AbandonCartModel $cart ): array {
+		return array_values(
+			array_filter(
+				(array) Arr::get( $cart->cart, 'cart_contents', [] ),
+				function ( $item ) {
+					return ! empty( $item['is_upgrade'] ) && ! empty( $item['license_id'] );
+				}
+			)
+		);
+	}
+
+	/**
+	 * License IDs of the cart's upgrade items.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @return int[]
+	 */
+	public static function upgradeLicenseIds( AbandonCartModel $cart ): array {
+		return array_values( array_unique( array_map( 'intval', wp_list_pluck( self::upgradeItems( $cart ), 'license_id' ) ) ) );
+	}
+
+	/**
+	 * Upgrade items whose license can still take the upgrade that was left at checkout.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @return array<int,array<string,mixed>>
+	 */
+	public function openUpgradeItems( AbandonCartModel $cart ): array {
+		return array_values( array_filter( self::upgradeItems( $cart ), [ $this, 'isUpgradeOpen' ] ) );
+	}
+
+	/**
+	 * Whether this license can still be upgraded along this item's path.
+	 *
+	 * False once the license moved to another plan (the upgrade, or a different one, went through),
+	 * when it is disabled, revoked or expired (Software Licensing refuses to upgrade those), or when
+	 * the path is no longer offered for it.
+	 *
+	 * @param array<string,mixed> $item Stored upgrade cart item.
+	 */
+	public function isUpgradeOpen( array $item ): bool {
+		$license = edd_software_licensing()->get_license( (int) Arr::get( $item, 'license_id' ) );
+
+		if ( ! $license || in_array( $license->status, [ 'revoked', 'disabled', 'expired' ], true ) ) {
+			return false;
+		}
+
+		$captured_download = Arr::get( $item, 'license_download_id' );
+		$captured_price    = Arr::get( $item, 'license_price_id' );
+		$plan_changed      = null !== $captured_download
+			&& ( (int) $captured_download !== (int) $license->download_id || (int) $captured_price !== (int) $license->price_id );
+
+		if ( $plan_changed ) {
+			return false;
+		}
+
+		$upgrade_id = (int) Arr::get( $item, 'upgrade_id' );
+		$path       = edd_sl_get_upgrade_path( $license->download_id, $upgrade_id );
+
+		if ( ! $path ) {
+			return false;
+		}
+
+		$already_on_path = (int) $path['download_id'] === (int) $license->download_id && (int) $path['price_id'] === (int) $license->price_id;
+		$offered         = (array) edd_sl_get_license_upgrades( $license->ID );
+
+		return ! $already_on_path && isset( $offered[ $upgrade_id ] );
+	}
+
+	/**
+	 * Whether the contact completed a paid order after the cart was saved.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	public function paidOrderSince( AbandonCartModel $cart ): bool {
+		if ( ! $cart->email || ! function_exists( 'edd_get_orders' ) ) {
+			return false;
+		}
+
+		// Carts are dated in site time, orders in UTC.
+		$since = get_gmt_from_date( (string) $cart->created_at );
+		$args  = [
+			'type'       => 'sale',
+			'status__in' => self::PAID_ORDER_STATUSES,
+			'number'     => 50,
+			'date_query' => [
+				[
+					'after'     => $since,
+					'inclusive' => true,
+				],
+			],
+		];
+
+		$orders = edd_get_orders( $args + [ 'email' => $cart->email ] );
+
+		if ( $cart->user_id ) {
+			$orders = array_merge( $orders, edd_get_orders( $args + [ 'user_id' => (int) $cart->user_id ] ) );
+		}
+
+		foreach ( $orders as $order ) {
+			if ( (float) $order->total > 0 ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Whether a license in the cart has an open renewal cart, or was renewed after the cart was saved.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	public function renewalUnderWay( AbandonCartModel $cart ): bool {
+		$license_ids = self::upgradeLicenseIds( $cart );
+
+		if ( ! $license_ids ) {
+			return false;
+		}
+
+		if ( array_intersect( $license_ids, self::licensesWithOpenRenewalCarts() ) ) {
+			return true;
+		}
+
+		foreach ( self::upgradeItems( $cart ) as $item ) {
+			$license = edd_software_licensing()->get_license( (int) $item['license_id'] );
+
+			// Lifetime licenses do not renew.
+			if ( ! $license || $license->is_lifetime ) {
+				continue;
+			}
+
+			$saved_expiration = (int) Arr::get( $item, 'license_expiration', 0 );
+			$renewed          = $saved_expiration > 0 && (int) $license->expiration > $saved_expiration;
+
+			if ( $renewed ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * License IDs in renewal carts that are being built or emailed.
+	 *
+	 * @return int[]
+	 */
+	public static function licensesWithOpenRenewalCarts(): array {
+		$license_ids = [];
+
+		$carts = AbandonCartModel::where( 'provider', EddRenewalCartDriver::PROVIDER )
+			->whereIn( 'status', self::OPEN_RENEWAL_STATUSES )
+			->get();
+
+		foreach ( $carts as $renewal ) {
+			foreach ( (array) Arr::get( $renewal->cart, 'cart_contents', [] ) as $item ) {
+				if ( ! empty( $item['license_id'] ) && empty( $item['is_upgrade'] ) ) {
+					$license_ids[] = (int) $item['license_id'];
+				}
+			}
+		}
+
+		return array_values( array_unique( $license_ids ) );
+	}
+
+	/**
+	 * Value of one of this provider's own smart codes, or null when the key is not one of them.
+	 *
+	 * Works on the cart's first upgrade item: Software Licensing puts one upgrade in a cart at a time.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @param string           $value_key     Part after the group key.
+	 * @param string           $default_value Fallback after the pipe.
+	 * @return string|null
+	 */
+	public function getUpgradeCodeValue( AbandonCartModel $cart, string $value_key, string $default_value ): ?string {
+		$codes = [ 'current_plan', 'new_plan', 'full_price', 'today_price', 'credit', 'price_breakdown', 'price_change_line', 'renewal_line', 'renewal_soon_line', 'new_plan_extras' ];
+
+		if ( ! in_array( $value_key, $codes, true ) ) {
+			return null;
+		}
+
+		$items = self::upgradeItems( $cart );
+		$item  = $items[0] ?? null;
+
+		if ( ! $item ) {
+			return $default_value;
+		}
+
+		$license = edd_software_licensing()->get_license( (int) $item['license_id'] );
+		$path    = $license ? edd_sl_get_upgrade_path( $license->download_id, (int) $item['upgrade_id'] ) : false;
+
+		if ( ! $license || ! $path ) {
+			return $default_value;
+		}
+
+		$new_download = (int) $path['download_id'];
+		$new_price_id = isset( $path['price_id'] ) && is_numeric( $path['price_id'] ) ? (int) $path['price_id'] : null;
+		$is_open      = $this->isUpgradeOpen( $item );
+
+		if ( ! $is_open && in_array( $value_key, self::PRICE_CODES, true ) ) {
+			return $default_value;
+		}
+
+		switch ( $value_key ) {
+			case 'current_plan':
+				return self::planName( (int) $license->download_id, $license->price_id );
+			case 'new_plan':
+				return self::planName( $new_download, $new_price_id );
+			case 'full_price':
+				return $this->formatForCart( self::regularPrice( $new_download, $new_price_id ), $cart );
+			case 'today_price':
+				return $this->formatForCart( $this->todayPrice( $item ), $cart );
+			case 'credit':
+				return $this->formatForCart( $this->credit( $item, $new_download, $new_price_id ), $cart );
+			case 'price_breakdown':
+				return $this->priceBreakdown( $cart, $item, $new_download, $new_price_id );
+			case 'price_change_line':
+				return esc_html( $this->priceChangeLine( $license, $path, $new_download, $new_price_id ) );
+			case 'renewal_line':
+				return esc_html( $this->renewalLine( $license, $new_download, $new_price_id ) );
+			case 'renewal_soon_line':
+				return esc_html( $this->renewalSoonLine( $license ) );
+			case 'new_plan_extras':
+				return $this->newPlanExtras( $license, $new_download, $new_price_id );
+		}
+
+		return $default_value;
+	}
+
+	/**
+	 * Product name plus price option, e.g. "GravityView — Up to 3 Sites", escaped for email HTML.
+	 *
+	 * @param int      $download_id
+	 * @param int|null $price_id
+	 */
+	private static function planName( int $download_id, $price_id ): string {
+		$price_id = is_numeric( $price_id ) ? (int) $price_id : null;
+		$name     = (string) edd_get_download_name( $download_id, $price_id );
+
+		return esc_html( wp_specialchars_decode( wp_strip_all_tags( $name ), ENT_QUOTES ) );
+	}
+
+	/**
+	 * The new plan's regular price in the store currency, as Software Licensing reads it.
+	 *
+	 * @param int      $download_id
+	 * @param int|null $price_id
+	 */
+	private static function regularPrice( int $download_id, ?int $price_id ): float {
+		return (float) ( null === $price_id ? edd_get_download_price( $download_id ) : edd_get_price_option_amount( $download_id, $price_id ) );
+	}
+
+	/**
+	 * What the upgrade costs today, in the store currency.
+	 *
+	 * @param array<string,mixed> $item
+	 */
+	private function todayPrice( array $item ): float {
+		return (float) edd_sl_get_license_upgrade_cost( (int) $item['license_id'], (int) $item['upgrade_id'] );
+	}
+
+	/**
+	 * The new plan's regular price minus today's price, never below zero.
+	 *
+	 * @param array<string,mixed> $item
+	 * @param int                 $new_download
+	 * @param int|null            $new_price_id
+	 */
+	private function credit( array $item, int $new_download, ?int $new_price_id ): float {
+		return max( 0, self::regularPrice( $new_download, $new_price_id ) - $this->todayPrice( $item ) );
+	}
+
+	/**
+	 * Formats a store-currency amount in the cart's currency, converting it when EDD Multi Currency is active.
+	 *
+	 * @param float            $amount Amount in the store currency.
+	 * @param AbandonCartModel $cart
+	 */
+	private function formatForCart( float $amount, AbandonCartModel $cart ): string {
+		$currency   = (string) ( $cart->currency ?: edd_get_currency() );
+		$store      = (string) edd_get_currency();
+		$can_switch = $currency !== $store && class_exists( '\\EDD_Multi_Currency\\Utils\\Currency' );
+
+		if ( $can_switch ) {
+			try {
+				$amount = (float) \EDD_Multi_Currency\Utils\Currency::convert( $amount, $currency );
+			} catch ( \Exception $e ) {
+				$currency = $store;
+			}
+		} elseif ( $currency !== $store ) {
+			$currency = $store;
+		}
+
+		return $this->formatPrice( $amount, $currency );
+	}
+
+	/**
+	 * Three lines: the new plan's price, the credit for the current plan, and what is due today.
+	 *
+	 * @param AbandonCartModel    $cart
+	 * @param array<string,mixed> $item
+	 * @param int                 $new_download
+	 * @param int|null            $new_price_id
+	 */
+	private function priceBreakdown( AbandonCartModel $cart, array $item, int $new_download, ?int $new_price_id ): string {
+		$lines = [
+			sprintf( '%s: %s', self::planName( $new_download, $new_price_id ), $this->formatForCart( self::regularPrice( $new_download, $new_price_id ), $cart ) ),
+			/* translators: %s: credit amount */
+			sprintf( __( 'Credit for your current plan: −%s', 'fluent-crm-custom-features' ), $this->formatForCart( $this->credit( $item, $new_download, $new_price_id ), $cart ) ),
+			/* translators: %s: amount due today */
+			'<strong>' . sprintf( __( 'You pay today: %s', 'fluent-crm-custom-features' ), $this->formatForCart( $this->todayPrice( $item ), $cart ) ) . '</strong>',
+		];
+
+		return '<p class="customcrm-upgrade-price" style="margin:0 0 16px;line-height:1.8">' . implode( '<br>', $lines ) . '</p>';
+	}
+
+	/**
+	 * Which way the price moves from day to day, when Software Licensing prorates by time.
+	 *
+	 * The credit is the unused share of the current plan, so it shrinks every day. Moving to a
+	 * plan with a term, the new plan's remaining share shrinks faster, so the price drops. Moving
+	 * to a lifetime plan, the new plan's price is fixed, so the price rises. Empty when the price
+	 * does not change daily: cost-based proration, a lifetime license, or a path that is not prorated.
+	 *
+	 * @param \EDD_SL_License     $license
+	 * @param array<string,mixed> $path Upgrade path.
+	 * @param int                 $new_download
+	 * @param int|null            $new_price_id
+	 */
+	private function priceChangeLine( $license, array $path, int $new_download, ?int $new_price_id ): string {
+		$method     = apply_filters( 'edd_sl_proration_method', edd_get_option( 'edd_sl_proration_method', 'cost-based' ), $license->ID, 0, 0 );
+		$time_based = 'cost-based' !== $method && ! apply_filters( 'edd_sl_license_upgrade_pro_rate_simple', false );
+
+		if ( ! $time_based || empty( $path['pro_rated'] ) || $license->is_lifetime ) {
+			return '';
+		}
+
+		if ( 'lifetime' === edd_sl_get_product_license_length( $new_download, $new_price_id ?? false ) ) {
+			return __( 'This price is for today. It goes up a little each day, because your credit covers the time left on your current plan, and that time gets shorter.', 'fluent-crm-custom-features' );
+		}
+
+		return __( 'This price is for today. It gets a little lower each day, because your credit covers the time left on your current plan.', 'fluent-crm-custom-features' );
+	}
+
+	/**
+	 * What happens to the renewal date, using Software Licensing's own rule for upgrades.
+	 *
+	 * The new plan is lifetime: no more renewals. Same term length: the date stays. A different
+	 * term: the new length counted from the license's latest payment (edd_sl_process_license_upgrade()).
+	 *
+	 * @param \EDD_SL_License $license
+	 * @param int             $new_download
+	 * @param int|null        $new_price_id
+	 */
+	private function renewalLine( $license, int $new_download, ?int $new_price_id ): string {
+		$new_expiration = function_exists( 'edd_sl_get_product_expiration_date' )
+			? edd_sl_get_product_expiration_date(
+				$license->download_id,
+				false,
+				[
+					'license_id'  => $license->ID,
+					'download_id' => $new_download,
+					'price_id'    => $new_price_id,
+				]
+			)
+			: false;
+
+		if ( 'lifetime' === $new_expiration ) {
+			return __( 'Your new plan is a lifetime license, so there are no more renewals.', 'fluent-crm-custom-features' );
+		}
+
+		if ( ! $new_expiration ) {
+			return '';
+		}
+
+		$date = self::formatExpiration( (int) $new_expiration );
+
+		if ( (int) $new_expiration === (int) $license->expiration ) {
+			/* translators: %s: date */
+			return sprintf( __( 'Your renewal date stays %s.', 'fluent-crm-custom-features' ), $date );
+		}
+
+		/* translators: %s: date */
+		return sprintf( __( 'Your license will renew on %s.', 'fluent-crm-custom-features' ), $date );
+	}
+
+	/**
+	 * A nudge to upgrade at renewal instead, when the license renews within 30 days.
+	 *
+	 * @param \EDD_SL_License $license
+	 */
+	private function renewalSoonLine( $license ): string {
+		$expiration  = (int) $license->expiration;
+		$now         = current_time( 'timestamp' );
+		$renews_soon = ! $license->is_lifetime && $expiration > $now && $expiration - $now <= self::RENEWAL_SOON_DAYS * DAY_IN_SECONDS;
+
+		if ( ! $renews_soon ) {
+			return '';
+		}
+
+		/* translators: %s: date */
+		return sprintf( __( 'Your license renews on %s. If you’d rather upgrade then, reply and we’ll set it up.', 'fluent-crm-custom-features' ), self::formatExpiration( $expiration ) );
+	}
+
+	/**
+	 * License dates are stored in site time, so they are formatted without a timezone shift.
+	 *
+	 * @param int $timestamp
+	 */
+	private static function formatExpiration( int $timestamp ): string {
+		return (string) date_i18n( get_option( 'date_format' ), $timestamp );
+	}
+
+	/**
+	 * A bullet list of what the new plan adds.
+	 *
+	 * - A bundle: its products the current license does not cover.
+	 * - An All Access pass: every GravityKit plugin.
+	 * - The same product on a bigger price option: the new option in place of the current one.
+	 * - Anything else: the new product with updates and support.
+	 *
+	 * Filter the list with `customcrm/edd_ab_cart/upgrade_plan_extras`.
+	 *
+	 * @param \EDD_SL_License $license
+	 * @param int             $new_download
+	 * @param int|null        $new_price_id
+	 */
+	private function newPlanExtras( $license, int $new_download, ?int $new_price_id ): string {
+		$current_download = (int) $license->download_id;
+		$extras           = [];
+
+		$is_all_access = function_exists( 'edd_all_access_download_is_all_access' ) && edd_all_access_download_is_all_access( $new_download );
+
+		if ( edd_is_bundled_product( $new_download ) ) {
+			$covered = array_merge( [ $current_download ], self::bundledIds( $current_download, $license->price_id ) );
+
+			foreach ( self::bundledIds( $new_download, $new_price_id ) as $product_id ) {
+				if ( ! in_array( $product_id, $covered, true ) ) {
+					$extras[] = self::planName( $product_id, null );
+				}
+			}
+		} elseif ( $is_all_access ) {
+			// Falls through to the "every GravityKit plugin" line below.
+			$extras = [];
+		} elseif ( $new_download === $current_download && null !== $new_price_id ) {
+			$extras[] = sprintf(
+				/* translators: 1: new price option, 2: current price option */
+				esc_html__( '%1$s, instead of %2$s', 'fluent-crm-custom-features' ),
+				esc_html( (string) edd_get_price_option_name( $new_download, $new_price_id ) ),
+				esc_html( (string) edd_get_price_option_name( $current_download, $license->price_id ) )
+			);
+		} else {
+			/* translators: %s: product name */
+			$extras[] = sprintf( esc_html__( 'Everything in %s, with all updates and support', 'fluent-crm-custom-features' ), self::planName( $new_download, null ) );
+		}
+
+		if ( ! $extras ) {
+			$extras[] = esc_html__( 'every GravityKit plugin, with all updates and support', 'fluent-crm-custom-features' );
+		}
+
+		$extras = (array) apply_filters( 'customcrm/edd_ab_cart/upgrade_plan_extras', $extras, $license, $new_download, $new_price_id );
+
+		return '<ul class="customcrm-upgrade-extras"><li>' . implode( '</li><li>', $extras ) . '</li></ul>';
+	}
+
+	/**
+	 * Download IDs in a bundle, without their price option suffixes ("123_2" is download 123).
+	 *
+	 * @param int      $download_id
+	 * @param int|null $price_id
+	 * @return int[]
+	 */
+	private static function bundledIds( int $download_id, $price_id ): array {
+		if ( ! edd_is_bundled_product( $download_id ) ) {
+			return [];
+		}
+
+		$price_id = is_numeric( $price_id ) && edd_has_variable_prices( $download_id ) ? (int) $price_id : null;
+		$products = (array) edd_get_bundled_products( $download_id, $price_id );
+
+		return array_values( array_unique( array_map( 'intval', $products ) ) );
+	}
+}

@@ -129,12 +129,21 @@ class EddCartDriver extends AbstractCartDriver {
 	}
 
 	/**
+	 * Days during which a contact who entered this provider's automation does not get it again.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	protected function resendCapDays( AbandonCartModel $cart ): int {
+		return (int) apply_filters( 'customcrm/edd_ab_cart/resend_cap_days', self::RESEND_CAP_DAYS, $cart );
+	}
+
+	/**
 	 * Whether this contact entered this provider's automation, or got Recapture's cart emails, within the resend cap.
 	 *
 	 * @param AbandonCartModel $cart
 	 */
 	protected function sentRecently( AbandonCartModel $cart ): bool {
-		$cap_days = (int) apply_filters( 'customcrm/edd_ab_cart/resend_cap_days', self::RESEND_CAP_DAYS, $cart );
+		$cap_days = $this->resendCapDays( $cart );
 
 		if ( $cap_days <= 0 || ! $cart->email ) {
 			return false;

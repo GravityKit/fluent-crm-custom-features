@@ -16,6 +16,7 @@ class CartEmailGuard {
 	private const CART_TRIGGERS = [
 		'fc_ab_cart_simulation_edd',
 		'fc_ab_cart_simulation_edd_renewal',
+		'fc_ab_cart_simulation_edd_upgrade',
 	];
 
 	/**

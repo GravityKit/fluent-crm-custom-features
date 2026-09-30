@@ -24,10 +24,10 @@ class EddCartTracking {
 	private const AJAX_OPT_OUT  = 'customcrm_edd_ab_cart_opt_out';
 	private const ORDER_META    = '_fc_ab_cart_id';
 	private const OPEN_STATUSES = [ 'draft', 'processing', 'pending', 'opt_out' ];
-	private const PROVIDERS     = [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER ];
+	private const PROVIDERS     = [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER, EddUpgradeCartDriver::PROVIDER ];
 	private const INDEX_OPTION  = 'customcrm_ab_cart_indexes';
 
-	/** Days after a renewal cart is marked lost that renewing its license still counts as recovering it. */
+	/** Days after a renewal or upgrade cart is marked lost that renewing or upgrading its license still counts as recovering it. */
 	private const LOST_RENEWAL_DAYS = 30;
 
 	/**
@@ -65,7 +65,7 @@ class EddCartTracking {
 	}
 
 	/**
-	 * Both EDD providers call this. The checkout script and AJAX endpoints are shared and added
+	 * Every EDD provider calls this. The checkout script and AJAX endpoints are shared and added
 	 * once; the recovery-link handler and smart codes belong to this tracker's provider.
 	 */
 	public function register(): void {
@@ -148,7 +148,8 @@ class EddCartTracking {
 			1
 		);
 
-		// An upgrade replaces the renewal: the customer paid for the license on a new plan.
+		// An upgrade replaces the renewal (the customer paid for the license on a new plan) and
+		// closes the license's upgrade cart, however the upgrade was bought.
 		add_action(
 			'edd_sl_license_upgraded',
 			function ( $license_id, $args = [] ) use ( $call ) {
@@ -219,7 +220,7 @@ class EddCartTracking {
 	/**
 	 * The shared instance the cart and order hooks run on.
 	 *
-	 * @return self|null Null when abandoned carts or both EDD providers are off.
+	 * @return self|null Null when abandoned carts or every EDD provider is off.
 	 */
 	private static function instanceIfEnabled(): ?self {
 		static $instance = null;
@@ -238,7 +239,9 @@ class EddCartTracking {
 	 * @param string $provider Provider key.
 	 */
 	private static function isProviderEnabled( string $provider ): bool {
-		if ( EddRenewalCartDriver::PROVIDER === $provider && ! function_exists( 'edd_software_licensing' ) ) {
+		$needs_licensing = in_array( $provider, [ EddRenewalCartDriver::PROVIDER, EddUpgradeCartDriver::PROVIDER ], true );
+
+		if ( $needs_licensing && ! function_exists( 'edd_software_licensing' ) ) {
 			return false;
 		}
 
@@ -246,10 +249,40 @@ class EddCartTracking {
 	}
 
 	/**
-	 * @return EddCartDriver|EddRenewalCartDriver
+	 * @return EddCartDriver|EddRenewalCartDriver|EddUpgradeCartDriver
 	 */
 	private static function driverFor( string $provider ): EddCartDriver {
-		return EddRenewalCartDriver::PROVIDER === $provider ? new EddRenewalCartDriver() : new EddCartDriver();
+		if ( EddRenewalCartDriver::PROVIDER === $provider ) {
+			return new EddRenewalCartDriver();
+		}
+
+		if ( EddUpgradeCartDriver::PROVIDER === $provider ) {
+			return new EddUpgradeCartDriver();
+		}
+
+		return new EddCartDriver();
+	}
+
+	/**
+	 * The provider a cart belongs to: any renewal makes it a renewal cart, otherwise any upgrade
+	 * makes it an upgrade cart. Existing customers never get the new-customer emails or discount.
+	 *
+	 * @param array<int,array<string,mixed>> $items Stored cart items, or `edd_get_cart_content_details()` items.
+	 */
+	private static function providerForItems( array $items ): string {
+		$is_renewal = false;
+		$is_upgrade = false;
+
+		foreach ( $items as $item ) {
+			$is_renewal = $is_renewal || ! empty( $item['is_renewal'] ) || ! empty( Arr::get( $item, 'item_number.options.is_renewal' ) );
+			$is_upgrade = $is_upgrade || ! empty( $item['is_upgrade'] ) || ! empty( Arr::get( $item, 'item_number.options.is_upgrade' ) );
+		}
+
+		if ( $is_renewal ) {
+			return EddRenewalCartDriver::PROVIDER;
+		}
+
+		return $is_upgrade ? EddUpgradeCartDriver::PROVIDER : EddCartDriver::PROVIDER;
 	}
 
 	/**
@@ -373,14 +406,12 @@ class EddCartTracking {
 		$items  = $this->getCartContents();
 		$total  = (float) edd_get_cart_total();
 
-		// A renewal belongs to the renewal sequence. Upgrades get neither sequence: the buyer is an
-		// existing customer, and the new-customer emails and discount are wrong for them.
-		$is_renewal = (bool) array_filter( wp_list_pluck( $items, 'is_renewal' ) );
-		$is_upgrade = (bool) array_filter( wp_list_pluck( $items, 'is_upgrade' ) );
-		$provider   = $is_renewal ? EddRenewalCartDriver::PROVIDER : EddCartDriver::PROVIDER;
+		$provider   = self::providerForItems( $items );
+		$is_renewal = EddRenewalCartDriver::PROVIDER === $provider;
+		$has_offer  = EddCartDriver::PROVIDER === $provider;
 
 		// Once a cart's sequence has started, it belongs to that email and that kind of cart. Someone
-		// typing another address, or turning a renewal into a new purchase, starts a new cart; only a
+		// typing another address, or turning a renewal or upgrade into a new purchase, starts a new cart; only a
 		// draft may change, which is a shopper correcting a typo or still building the cart.
 		$started = $record && ! in_array( $record->status, [ 'draft', 'pending' ], true );
 		if ( $started && ( 0 !== strcasecmp( (string) $record->email, $email ) || $record->provider !== $provider ) ) {
@@ -396,7 +427,7 @@ class EddCartTracking {
 
 		// Free downloads are not abandoned purchases. Recapture emailed these carts, mostly the
 		// free Elementor widget, asking people to "complete your purchase" of a $0 item.
-		if ( ! $items || $total <= 0 || $is_upgrade || ! self::isProviderEnabled( $provider ) ) {
+		if ( ! $items || $total <= 0 || ! self::isProviderEnabled( $provider ) ) {
 			if ( $record && in_array( $record->status, [ 'draft', 'pending' ], true ) ) {
 				$record->delete();
 				$this->setCookie( '', -1 );
@@ -437,8 +468,9 @@ class EddCartTracking {
 					],
 				],
 				// Keep discount codes already issued for this cart; the later emails reuse them.
-				'recovery_discount'  => $is_renewal ? null : Arr::get( $previous, 'recovery_discount' ),
-				'recovery_discounts' => $is_renewal ? null : Arr::get( $previous, 'recovery_discounts' ),
+				// Renewals and upgrades get no discount.
+				'recovery_discount'  => $has_offer ? Arr::get( $previous, 'recovery_discount' ) : null,
+				'recovery_discounts' => $has_offer ? Arr::get( $previous, 'recovery_discounts' ) : null,
 			],
 		];
 
@@ -459,6 +491,18 @@ class EddCartTracking {
 
 		$this->setCookie( $record->checkout_key );
 
+		// Renewal wins: a license being renewed stops getting upgrade emails.
+		if ( $is_renewal ) {
+			$renewal_items = array_filter( $items, function ( $item ) {
+				return ! empty( $item['is_renewal'] );
+			} );
+
+			$this->dropLicenseUpgradeCarts(
+				array_map( 'intval', wp_list_pluck( $renewal_items, 'license_id' ) ),
+				__( 'Cancelled because a renewal for this license was started', 'fluent-crm-custom-features' )
+			);
+		}
+
 		return $record;
 	}
 
@@ -475,16 +519,24 @@ class EddCartTracking {
 			$price_id   = Arr::get( $item, 'item_number.options.price_id' );
 			$quantity   = max( 1, (int) Arr::get( $item, 'quantity', 1 ) );
 			$image      = get_the_post_thumbnail_url( $product_id, 'thumbnail' );
-			$license_id = ! empty( Arr::get( $item, 'item_number.options.is_renewal' ) ) ? (int) Arr::get( $item, 'item_number.options.license_id' ) : 0;
+			$is_renewal = ! empty( Arr::get( $item, 'item_number.options.is_renewal' ) );
+			$is_upgrade = ! $is_renewal && ! empty( Arr::get( $item, 'item_number.options.is_upgrade' ) );
+			$license_id = $is_renewal || $is_upgrade ? (int) Arr::get( $item, 'item_number.options.license_id' ) : 0;
 			$license    = $license_id && function_exists( 'edd_software_licensing' ) ? edd_software_licensing()->get_license( $license_id ) : false;
 
 			$items[] = [
 				'key'           => $product_id . '|' . ( null === $price_id ? '' : (int) $price_id ) . '|' . $quantity . '|' . $license_id,
-				'is_renewal'    => (bool) $license_id,
-				'is_upgrade'    => ! empty( Arr::get( $item, 'item_number.options.is_upgrade' ) ),
+				'is_renewal'    => $is_renewal && $license_id,
+				'is_upgrade'    => $is_upgrade,
 				'license_id'    => $license_id ?: null,
+				// Index into the license's upgrade paths; prices are worked out from it when an email is sent.
+				'upgrade_id'    => $is_upgrade ? (int) Arr::get( $item, 'item_number.options.upgrade_id' ) : null,
 				// Unix time; 0 for a lifetime license. A later value after saving means it was renewed.
 				'license_expiration' => $license ? (int) $license->expiration : null,
+				'license_lifetime'   => $license ? (bool) $license->is_lifetime : null,
+				// The license's plan when the cart was saved. A different plan later means it was upgraded.
+				'license_download_id' => $license ? (int) $license->download_id : null,
+				'license_price_id'    => $license && is_numeric( $license->price_id ) ? (int) $license->price_id : null,
 				'product_id'    => $product_id,
 				'price_id'      => null === $price_id ? null : (int) $price_id,
 				'quantity'      => $quantity,
@@ -509,15 +561,9 @@ class EddCartTracking {
 	public function linkOrder( $order_id, $order_data = [] ): void {
 		$email = (string) ( Arr::get( $order_data, 'user_email' ) ?: Arr::get( $order_data, 'user_info.email', '' ) );
 
-		// Only a renewal order may close a renewal cart; another purchase leaves the renewal outstanding.
-		$is_renewal = false;
-		foreach ( (array) Arr::get( $order_data, 'cart_details', [] ) as $item ) {
-			if ( ! empty( Arr::get( $item, 'item_number.options.is_renewal' ) ) ) {
-				$is_renewal = true;
-			}
-		}
-
-		$record = $this->getCurrentRecord( $email, $is_renewal ? EddRenewalCartDriver::PROVIDER : EddCartDriver::PROVIDER );
+		// Only a renewal order may close a renewal cart, and only an upgrade order an upgrade cart.
+		$provider = self::providerForItems( (array) Arr::get( $order_data, 'cart_details', [] ) );
+		$record   = $this->getCurrentRecord( $email, $provider );
 
 		if ( ! $record ) {
 			return;
@@ -558,8 +604,13 @@ class EddCartTracking {
 		if ( $record ) {
 			$this->closeCart( $record, $order );
 
-			if ( EddRenewalCartDriver::PROVIDER === $record->provider ) {
-				$this->cancelCartAutomation( $record, __( 'Cancelled because the contact renewed', 'fluent-crm-custom-features' ) );
+			$reasons = [
+				EddRenewalCartDriver::PROVIDER => __( 'Cancelled because the contact renewed', 'fluent-crm-custom-features' ),
+				EddUpgradeCartDriver::PROVIDER => __( 'Cancelled because the contact upgraded', 'fluent-crm-custom-features' ),
+			];
+
+			if ( isset( $reasons[ $record->provider ] ) ) {
+				$this->cancelCartAutomation( $record, $reasons[ $record->provider ] );
 			}
 		}
 
@@ -567,6 +618,15 @@ class EddCartTracking {
 		// from one of them: someone who bought should not get "you left items in your cart".
 		$this->deleteOtherCarts( $record ? (int) $record->id : 0, $order->email, (int) $order->user_id );
 		$this->cancelAutomations( $order->email, (int) $order->user_id, __( 'Cancelled because the contact completed a purchase', 'fluent-crm-custom-features' ) );
+
+		// A paid order stops the buyer's upgrade emails. Carts whose license this order upgraded are
+		// left open here: closeRenewedCarts() marks them recovered at shutdown.
+		$this->dropBuyerUpgradeCarts(
+			$record ? (int) $record->id : 0,
+			(string) $order->email,
+			(int) $order->user_id,
+			__( 'Cancelled because the contact completed another purchase', 'fluent-crm-custom-features' )
+		);
 
 		$this->setCookie( '', -1 );
 	}
@@ -616,7 +676,10 @@ class EddCartTracking {
 	}
 
 	/**
-	 * Close renewal carts whose licenses have all been renewed or upgraded, by any route. Runs at shutdown.
+	 * Close renewal and upgrade carts whose licenses were renewed or upgraded, by any route. Runs at shutdown.
+	 *
+	 * A renewal cart closes once all its licenses are renewed or upgraded. An upgrade cart closes as
+	 * recovered when one of its licenses is upgraded, and is dropped when one is renewed.
 	 */
 	public function closeRenewedCarts(): void {
 		$upgraded    = self::$upgraded_licenses;
@@ -626,27 +689,17 @@ class EddCartTracking {
 			return;
 		}
 
-		// A lost cart counts for 30 days after it was marked lost; a renewal after that is not a recovery.
-		// FluentCRM marks carts lost `lost_cart_days` after they were created, in site-local time.
-		$lost_days   = (int) AbCartHelper::getSetting( 'lost_cart_days', 15 ) + self::LOST_RENEWAL_DAYS;
-		$lost_cutoff = gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - ( $lost_days * DAY_IN_SECONDS ) );
-
 		$driver = new EddRenewalCartDriver();
-		$carts  = AbandonCartModel::where( 'provider', EddRenewalCartDriver::PROVIDER )
-			->where(
-				function ( $query ) use ( $lost_cutoff ) {
-					$query->whereIn( 'status', [ 'draft', 'pending', 'processing', 'opt_out' ] )
-						->orWhere(
-							function ( $lost ) use ( $lost_cutoff ) {
-								$lost->where( 'status', 'lost' )->where( 'created_at', '>=', $lost_cutoff );
-							}
-						);
-				}
-			)
-			->get();
+		$carts  = $this->openOrRecentlyLostCarts( EddRenewalCartDriver::PROVIDER );
 
 		foreach ( $carts as $cart ) {
-			$cart_licenses = array_filter( array_map( 'intval', wp_list_pluck( Arr::get( $cart->cart, 'cart_contents', [] ), 'license_id' ) ) );
+			$renewal_items = array_filter(
+				Arr::get( $cart->cart, 'cart_contents', [] ),
+				function ( $item ) {
+					return empty( $item['is_upgrade'] );
+				}
+			);
+			$cart_licenses = array_filter( array_map( 'intval', wp_list_pluck( $renewal_items, 'license_id' ) ) );
 			$cart_upgrades = array_intersect_key( $upgraded, array_flip( $cart_licenses ) );
 
 			if ( ! array_intersect( $cart_licenses, $license_ids ) || ! $driver->allLicensesRenewed( $cart, array_keys( $cart_upgrades ) ) ) {
@@ -666,6 +719,131 @@ class EddCartTracking {
 			$this->closeCart( $cart, $order, $note );
 			$this->cancelCartAutomation( $cart, $why );
 		}
+
+		$this->closeUpgradedCarts( $upgraded );
+
+		$renewed_only = array_diff( array_map( 'intval', self::$renewed_licenses ), array_keys( $upgraded ) );
+		$this->dropLicenseUpgradeCarts( $renewed_only, __( 'Cancelled because the license was renewed', 'fluent-crm-custom-features' ) );
+	}
+
+	/**
+	 * A provider's open carts, plus those marked lost recently enough that a renewal or upgrade still counts as recovering them.
+	 *
+	 * @param string $provider Provider key.
+	 * @return AbandonCartModel[]
+	 */
+	private function openOrRecentlyLostCarts( string $provider ) {
+		// A lost cart counts for 30 days after it was marked lost. FluentCRM marks carts lost
+		// `lost_cart_days` after they were created, in site-local time.
+		$lost_days   = (int) AbCartHelper::getSetting( 'lost_cart_days', 15 ) + self::LOST_RENEWAL_DAYS;
+		$lost_cutoff = gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - ( $lost_days * DAY_IN_SECONDS ) );
+
+		return AbandonCartModel::where( 'provider', $provider )
+			->where(
+				function ( $query ) use ( $lost_cutoff ) {
+					$query->whereIn( 'status', [ 'draft', 'pending', 'processing', 'opt_out' ] )
+						->orWhere(
+							function ( $lost ) use ( $lost_cutoff ) {
+								$lost->where( 'status', 'lost' )->where( 'created_at', '>=', $lost_cutoff );
+							}
+						);
+				}
+			)
+			->get();
+	}
+
+	/**
+	 * Marks upgrade carts recovered when one of their licenses was upgraded, through the recovery
+	 * link or any other route, and stops their emails.
+	 *
+	 * @param array<int,int> $upgraded Upgrade order IDs keyed by license ID.
+	 */
+	private function closeUpgradedCarts( array $upgraded ): void {
+		if ( ! $upgraded ) {
+			return;
+		}
+
+		foreach ( $this->openOrRecentlyLostCarts( EddUpgradeCartDriver::PROVIDER ) as $cart ) {
+			$cart_upgrades = array_intersect_key( $upgraded, array_flip( EddUpgradeCartDriver::upgradeLicenseIds( $cart ) ) );
+
+			if ( ! $cart_upgrades ) {
+				continue;
+			}
+
+			$order_id     = (int) max( $cart_upgrades );
+			$order        = $order_id ? ( edd_get_order( $order_id ) ?: null ) : null;
+			$through_link = $order && (int) $cart->order_id === (int) $order->id;
+
+			$this->closeCart( $cart, $order, $through_link ? '' : __( 'Upgraded outside the recovery link', 'fluent-crm-custom-features' ) );
+			$this->cancelCartAutomation( $cart, __( 'Cancelled because the license was upgraded', 'fluent-crm-custom-features' ) );
+		}
+	}
+
+	/**
+	 * Drops the open upgrade carts holding any of these licenses: a renewal took over.
+	 *
+	 * @param int[]  $license_ids
+	 * @param string $why Shown on the cancelled automation run.
+	 */
+	private function dropLicenseUpgradeCarts( array $license_ids, string $why ): void {
+		$license_ids = array_filter( array_map( 'intval', $license_ids ) );
+
+		if ( ! $license_ids ) {
+			return;
+		}
+
+		$carts = AbandonCartModel::where( 'provider', EddUpgradeCartDriver::PROVIDER )
+			->whereIn( 'status', [ 'draft', 'pending', 'processing', 'opt_out' ] )
+			->get();
+
+		foreach ( $carts as $cart ) {
+			if ( array_intersect( EddUpgradeCartDriver::upgradeLicenseIds( $cart ), $license_ids ) ) {
+				$this->dropUpgradeCart( $cart, $why );
+			}
+		}
+	}
+
+	/**
+	 * Drops the buyer's open upgrade carts after a paid order, except the order's own cart and
+	 * carts whose license was upgraded in this request (closeUpgradedCarts() recovers those).
+	 *
+	 * @param int    $keep_id Cart to keep; 0 for none.
+	 * @param string $email
+	 * @param int    $user_id 0 for a guest.
+	 * @param string $why     Shown on the cancelled automation run.
+	 */
+	private function dropBuyerUpgradeCarts( int $keep_id, string $email, int $user_id, string $why ): void {
+		$carts = AbandonCartModel::where( 'provider', EddUpgradeCartDriver::PROVIDER )
+			->where( 'id', '!=', $keep_id )
+			->whereIn( 'status', [ 'draft', 'pending', 'processing', 'opt_out' ] )
+			->where(
+				function ( $query ) use ( $email, $user_id ) {
+					$query->where( 'email', $email );
+					if ( $user_id ) {
+						$query->orWhere( 'user_id', $user_id );
+					}
+				}
+			)
+			->get();
+
+		$upgraded_now = array_keys( self::$upgraded_licenses );
+
+		foreach ( $carts as $cart ) {
+			if ( ! array_intersect( EddUpgradeCartDriver::upgradeLicenseIds( $cart ), $upgraded_now ) ) {
+				$this->dropUpgradeCart( $cart, $why );
+			}
+		}
+	}
+
+	/**
+	 * Cancels an upgrade cart's automation run, keeping the run and its reason, and deletes the cart.
+	 *
+	 * @param AbandonCartModel $cart
+	 * @param string           $why Shown on the cancelled automation run.
+	 */
+	private function dropUpgradeCart( AbandonCartModel $cart, string $why ): void {
+		$this->cancelCartAutomation( $cart, $why );
+		$cart->delete();
 	}
 
 	/**
@@ -799,10 +977,22 @@ class EddCartTracking {
 		edd_empty_cart();
 
 		$failed_renewals = [];
+		$failed_upgrades = [];
 
 		foreach ( Arr::get( $record->cart, 'cart_contents', [] ) as $item ) {
-			// Added the way a renewal link adds it, so EDD prices it as a renewal and records it on the license.
-			if ( ! empty( $item['license_id'] ) && function_exists( 'edd_sl_add_renewal_to_cart' ) ) {
+			// Added the way Software Licensing's upgrade link adds it, at today's prorated price.
+			if ( ! empty( $item['is_upgrade'] ) && ! empty( $item['license_id'] ) ) {
+				$added = $this->addUpgradeToCart( $item );
+
+				if ( ! is_wp_error( $added ) ) {
+					continue;
+				}
+
+				// The upgrade can no longer be bought. Add the new plan as a new purchase so the
+				// shopper still lands on a checkout with it.
+				$failed_upgrades[] = sprintf( '#%d: %s', (int) $item['license_id'], $added->get_error_code() );
+			} elseif ( ! empty( $item['license_id'] ) && function_exists( 'edd_sl_add_renewal_to_cart' ) ) {
+				// Added the way a renewal link adds it, so EDD prices it as a renewal and records it on the license.
 				$added = edd_sl_add_renewal_to_cart( (int) $item['license_id'] );
 
 				if ( ! is_wp_error( $added ) ) {
@@ -846,9 +1036,17 @@ class EddCartTracking {
 		self::$restoring = false;
 
 		$record->click_counts = (int) $record->click_counts + 1;
+		$notes                = [];
 		if ( $failed_renewals ) {
 			/* translators: %s: license IDs and EDD error codes */
-			$record->note = sprintf( __( 'Recovery link could not renew license %s; added as a new purchase', 'fluent-crm-custom-features' ), implode( ', ', $failed_renewals ) );
+			$notes[] = sprintf( __( 'Recovery link could not renew license %s; added as a new purchase', 'fluent-crm-custom-features' ), implode( ', ', $failed_renewals ) );
+		}
+		if ( $failed_upgrades ) {
+			/* translators: %s: license IDs and error codes */
+			$notes[] = sprintf( __( 'Recovery link could not upgrade license %s; added as a new purchase', 'fluent-crm-custom-features' ), implode( ', ', $failed_upgrades ) );
+		}
+		if ( $notes ) {
+			$record->note = implode( '; ', $notes );
 		}
 		$record->save();
 
@@ -856,6 +1054,55 @@ class EddCartTracking {
 
 		wp_safe_redirect( edd_get_checkout_uri() );
 		exit;
+	}
+
+	/**
+	 * Puts a license upgrade in the EDD cart as Software Licensing's `sl_license_upgrade` action
+	 * does (edd_sl_add_upgrade_to_cart() in 3.9.5), without its redirect.
+	 *
+	 * @param array<string,mixed> $item Stored upgrade cart item.
+	 * @return true|\WP_Error Error code says why the upgrade could not be added.
+	 */
+	private function addUpgradeToCart( array $item ) {
+		$license_id = (int) $item['license_id'];
+		$upgrade_id = (int) Arr::get( $item, 'upgrade_id' );
+
+		// Also catches a license that moved to another plan, whose paths the stored upgrade ID no longer indexes.
+		if ( ! ( new EddUpgradeCartDriver() )->isUpgradeOpen( $item ) ) {
+			return new \WP_Error( 'upgrade_unavailable' );
+		}
+
+		$license        = edd_software_licensing()->get_license( $license_id );
+		$payment_status = edd_get_payment_status( edd_software_licensing()->get_payment_id( $license_id ) );
+
+		if ( ! in_array( $payment_status, [ 'publish', 'complete', 'partially_refunded' ], true ) ) {
+			return new \WP_Error( 'payment_not_complete' );
+		}
+
+		$upgrade = edd_sl_get_upgrade_path( $license->download_id, $upgrade_id );
+		$cost    = edd_sl_get_license_upgrade_cost( $license_id, $upgrade_id );
+
+		if ( function_exists( 'eddMultiCurrency' ) ) {
+			try {
+				$cost = \EDD_Multi_Currency\Utils\Currency::convert( $cost, \EDD_Multi_Currency\Utils\Currency::getBaseCurrency(), eddMultiCurrency( \EDD_Multi_Currency\Checkout\CurrencyHandler::class )->getSelectedCurrency() );
+			} catch ( \Exception $e ) {
+				// Keep the store-currency cost, as Software Licensing does.
+				self::logError( 'addUpgradeToCart', $e );
+			}
+		}
+
+		edd_add_to_cart(
+			$upgrade['download_id'],
+			[
+				'price_id'   => $upgrade['price_id'],
+				'is_upgrade' => true,
+				'upgrade_id' => $upgrade_id,
+				'license_id' => $license_id,
+				'cost'       => $cost,
+			]
+		);
+
+		return true;
 	}
 
 	/**
@@ -877,6 +1124,24 @@ class EddCartTracking {
 			]
 			: [];
 
+		$is_upgrade = EddUpgradeCartDriver::PROVIDER === $this->driver->getProviderSlug();
+
+		if ( $is_upgrade ) {
+			// Prices are worked out when the email is sent: the upgrade price drops every day.
+			$extra_codes = [
+				'{{' . $group . '.current_plan}}'      => __( 'Current Plan', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.new_plan}}'          => __( 'New Plan', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.full_price}}'        => __( 'New Plan Regular Price', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.today_price}}'       => __( 'Upgrade Price Today', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.credit}}'            => __( 'Credit for the Current Plan', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.price_breakdown}}'   => __( 'Price Breakdown (three lines)', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.price_change_line}}' => __( 'Whether the Price Goes Up or Down Each Day', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.renewal_line}}'      => __( 'What Happens to the Renewal Date', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.renewal_soon_line}}' => __( 'Renews-Soon Line (empty unless the license renews within 30 days)', 'fluent-crm-custom-features' ),
+				'{{' . $group . '.new_plan_extras}}'   => __( 'What the New Plan Adds (bullet list)', 'fluent-crm-custom-features' ),
+			];
+		}
+
 		if ( EddCartDriver::PROVIDER === $this->driver->getProviderSlug() ) {
 			$discounts = new EddRecoveryDiscount();
 
@@ -893,11 +1158,17 @@ class EddCartTracking {
 			$extra_codes[ '##' . $group . '.recovery_url_code.CODE##' ] = __( 'Recovery URL that also applies a store-wide code (replace CODE)', 'fluent-crm-custom-features' );
 		}
 
+		$discount_codes = [
+			'{{' . $group . '.recovery_discount_code}}'    => __( 'One-time Recovery Discount Code (created on first use)', 'fluent-crm-custom-features' ),
+			'{{' . $group . '.recovery_discount_amount}}'  => __( 'Recovery Discount Amount (e.g. 40%)', 'fluent-crm-custom-features' ),
+			'{{' . $group . '.recovery_discount_expires}}' => __( 'Recovery Discount Expiry Date', 'fluent-crm-custom-features' ),
+		];
+
 		$codes[] = [
 			'key'        => $group,
 			/* translators: %s: cart provider, e.g. "Easy Digital Downloads" */
 			'title'      => sprintf( __( 'Abandoned Cart - %s', 'fluent-crm-custom-features' ), $this->driver->getProviderLabel() ),
-			'shortcodes' => $extra_codes + [
+			'shortcodes' => $extra_codes + ( $is_upgrade ? [] : $discount_codes ) + [
 				'{{' . $group . '.cart_items_table}}'   => __( 'Cart Items', 'fluent-crm-custom-features' ),
 				'##' . $group . '.recovery_url##'       => __( 'Cart Recovery URL', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.first_product_name}}' => __( 'First Product Name', 'fluent-crm-custom-features' ),
@@ -908,9 +1179,6 @@ class EddCartTracking {
 				'{{' . $group . '.coupon_codes}}'       => __( 'Applied Coupon Codes', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.billing_full_name}}'  => __( 'Full Name', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.billing_first_name}}' => __( 'First Name', 'fluent-crm-custom-features' ),
-				'{{' . $group . '.recovery_discount_code}}' => __( 'One-time Recovery Discount Code (created on first use)', 'fluent-crm-custom-features' ),
-				'{{' . $group . '.recovery_discount_amount}}' => __( 'Recovery Discount Amount (e.g. 40%)', 'fluent-crm-custom-features' ),
-				'{{' . $group . '.recovery_discount_expires}}' => __( 'Recovery Discount Expiry Date', 'fluent-crm-custom-features' ),
 			],
 		];
 
@@ -933,6 +1201,21 @@ class EddCartTracking {
 		}
 
 		$items = Arr::get( $cart->cart, 'cart_contents', [] );
+
+		if ( $this->driver instanceof EddUpgradeCartDriver ) {
+			$upgrade_value = $this->driver->getUpgradeCodeValue( $cart, (string) $value_key, (string) $default_value );
+
+			if ( null !== $upgrade_value ) {
+				return $upgrade_value;
+			}
+
+			// Upgrades never get a discount code, even from a hand-edited email.
+			$is_discount_code = 0 === strpos( (string) $value_key, 'recovery_discount' ) || 0 === strpos( (string) $value_key, 'discount.' );
+
+			if ( $is_discount_code ) {
+				return $default_value;
+			}
+		}
 
 		switch ( $value_key ) {
 			case 'cart_items_table':
