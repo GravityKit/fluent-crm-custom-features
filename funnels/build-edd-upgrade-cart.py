@@ -28,7 +28,10 @@ REFUNDS = "https://www.gravitykit.com/refund-policy/"
 
 from email_blocks import button, greeting, header, para, raw, signature
 
-SIGN = signature(["All the best,", "The GravityKit team"])
+SIGN = signature(["Zack Katz", "Founder, GravityKit"])
+CALL = "https://www.gravitykit.com/consultation/"
+PS_CALL = ("Not sure the bigger plan is right for you? "
+           '<a href="' + CALL + '">Book a free 1-on-1 call with me</a> and we’ll work out what fits.')
 
 
 # The first wait follows the "capture after" minutes in Abandoned Cart settings (30), so email 1
@@ -48,7 +51,8 @@ EMAILS = [
         + para(PRICE_CHANGE)
         + para(RENEWAL + " You won’t be charged twice.")
         + para("If something went wrong at checkout, just reply and we’ll fix it.")
-        + SIGN,
+        + SIGN
+        + para("P.S. " + PS_CALL),
         "upgrade-cart-1",
     ),
     (
@@ -65,7 +69,8 @@ EMAILS = [
                "the upgrade helps.")
         + para('You’re also covered by our <a href="' + REFUNDS + '">30-day refund policy</a>.')
         + button("See My Upgrade", URL)
-        + SIGN,
+        + SIGN
+        + para("P.S. " + PS_CALL),
         "upgrade-cart-2",
     ),
     (
@@ -80,7 +85,8 @@ EMAILS = [
         + para(RENEWAL_SOON)
         + para("This is our last email about it. Your saved upgrade is here if you want it:")
         + button("Finish Upgrading", URL)
-        + SIGN,
+        + SIGN
+        + para("P.S. " + PS_CALL),
         "upgrade-cart-3",
     ),
 ]
