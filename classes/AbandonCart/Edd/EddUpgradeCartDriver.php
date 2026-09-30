@@ -425,7 +425,7 @@ class EddUpgradeCartDriver extends EddCartDriver {
 			case 'renewal_line':
 				return esc_html( $this->renewalLine( $license, $new_download, $new_price_id ) );
 			case 'renewal_soon_line':
-				return esc_html( $this->renewalSoonLine( $license ) );
+				return $this->renewalSoonLine( $license );
 			case 'new_plan_extras':
 				return $this->newPlanExtras( $license, $new_download, $new_price_id );
 		}
@@ -687,8 +687,8 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	}
 
 	/**
-	 * What happens to the renewal date (no more renewals, the date stays, or the new date), and
-	 * that the customer is not charged twice. Empty when the date cannot be worked out.
+	 * What happens to the renewal date: nothing to renew, the date stays, or the new date. Empty
+	 * when the date cannot be worked out.
 	 *
 	 * @param \EDD_SL_License $license
 	 * @param int             $new_download
@@ -698,7 +698,7 @@ class EddUpgradeCartDriver extends EddCartDriver {
 		$new_expiration = self::expirationAfterUpgrade( $license, $new_download, $new_price_id );
 
 		if ( 'lifetime' === $new_expiration ) {
-			return __( 'Your new plan is a lifetime license, so there are no more renewals. You won’t be charged twice.', 'fluent-crm-custom-features' );
+			return __( 'It’s a lifetime license, so there’s nothing to renew.', 'fluent-crm-custom-features' );
 		}
 
 		if ( ! $new_expiration ) {
@@ -709,11 +709,11 @@ class EddUpgradeCartDriver extends EddCartDriver {
 
 		if ( (int) $new_expiration === (int) $license->expiration ) {
 			/* translators: %s: date */
-			return sprintf( __( 'Your renewal date stays %s. You won’t be charged twice.', 'fluent-crm-custom-features' ), $date );
+			return sprintf( __( 'Your renewal date stays %s.', 'fluent-crm-custom-features' ), $date );
 		}
 
 		/* translators: %s: date */
-		return sprintf( __( 'Your license will renew on %s. You won’t be charged twice.', 'fluent-crm-custom-features' ), $date );
+		return sprintf( __( 'Your license will then renew on %s.', 'fluent-crm-custom-features' ), $date );
 	}
 
 	/**
@@ -760,7 +760,11 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	/**
 	 * A nudge to upgrade at renewal instead, when the license renews within 30 days.
 	 *
+	 * Returned as its own paragraph, so an email can place it with no wrapper and an empty value
+	 * leaves nothing behind.
+	 *
 	 * @param \EDD_SL_License $license
+	 * @return string `<p>` HTML, or empty.
 	 */
 	private function renewalSoonLine( $license ): string {
 		$expiration  = (int) $license->expiration;
@@ -772,7 +776,9 @@ class EddUpgradeCartDriver extends EddCartDriver {
 		}
 
 		/* translators: %s: date */
-		return sprintf( __( 'Your license renews on %s. If you’d rather upgrade then, reply and we’ll set it up.', 'fluent-crm-custom-features' ), self::formatExpiration( $expiration ) );
+		$sentence = sprintf( __( 'Your license renews on %s. If you’d rather upgrade then, just reply and we’ll set it up.', 'fluent-crm-custom-features' ), self::formatExpiration( $expiration ) );
+
+		return '<p>' . esc_html( $sentence ) . '</p>';
 	}
 
 	/**

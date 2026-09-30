@@ -1145,7 +1145,7 @@ katz.co",
 	t402_check( 'breakdown (time-based, same term): line 1 is the new plan\'s share of the term and the credit is below the $99 paid', $same_share && $rows_term[0]['cents'] < 17900 && $rows_term[1]['cents'] > 0 && $rows_term[1]['cents'] < 9900, $rows_term );
 	t402_check( 'code: credit matches line 2 of the breakdown', 3 === count( $rows_term ) && '−' . html_entity_decode( $codes_now['credit'], ENT_QUOTES, 'UTF-8' ) === substr( $rows_term[1]['text'], strrpos( $rows_term[1]['text'], ': ' ) + 2 ), [ $codes_now['credit'], $rows_term[1]['text'] ?? null ] );
 	t402_check( 'code: price_change_line says a term upgrade gets lower each day', false !== strpos( $codes_now['change'], 'lower each day' ), $codes_now['change'] );
-	t402_check( 'code: renewal_line, same term: the date stays', 'Your renewal date stays ' . date_i18n( $date_fmt, (int) $license->expiration ) . '. You won’t be charged twice.' === $codes_now['renewal'], $codes_now['renewal'] );
+	t402_check( 'code: renewal_line, same term: the date stays', 'Your renewal date stays ' . date_i18n( $date_fmt, (int) $license->expiration ) . '.' === $codes_now['renewal'], $codes_now['renewal'] );
 	t402_check( 'code: renewal_soon_line is empty 200 days out', '' === $codes_now['soon'], $codes_now['soon'] );
 	t402_check( 'code: new_plan_extras for a bigger tier of the same product', false !== strpos( $codes_now['extras'], '<li>Up to 3 Sites, instead of Single Site</li>' ), $codes_now['extras'] );
 
@@ -1178,7 +1178,7 @@ katz.co",
 	$rows_method = $check_breakdown( 'cost-based method', $code_cart, $plan_name( $download_id, 2 ), 'Credit for ' . $current_label, $method_cost );
 	remove_filter( 'edd_sl_proration_method', $cost_based );
 	t402_check( 'breakdown (cost-based method): $179.00 − $99.00 = $80.00', 3 === count( $rows_method ) && [ 17900, 9900, 8000 ] === wp_list_pluck( $rows_method, 'cents' ), $rows_method );
-	t402_check( 'code: renewal_line, lifetime plan: no more renewals', 'Your new plan is a lifetime license, so there are no more renewals. You won’t be charged twice.' === $code( $life_cart, 'renewal_line' ), $code( $life_cart, 'renewal_line' ) );
+	t402_check( 'code: renewal_line, lifetime plan: no more renewals', 'It’s a lifetime license, so there’s nothing to renew.' === $code( $life_cart, 'renewal_line' ), $code( $life_cart, 'renewal_line' ) );
 	t402_check( 'code: price_change_line says a lifetime upgrade goes up each day', false !== strpos( $code( $life_cart, 'price_change_line' ), 'goes up' ), $code( $life_cart, 'price_change_line' ) );
 
 	// A different term length: SL counts the new length from the license's latest payment.
@@ -1191,7 +1191,7 @@ katz.co",
 	$payment_ids   = (array) edd_software_licensing()->get_license( $license->ID )->payment_ids;
 	$latest_order  = edd_get_order( (int) end( $payment_ids ) );
 	$sl_new_expiry = strtotime( '+1 years', strtotime( $latest_order->date_created ) );
-	t402_check( 'code: renewal_line, different term: the date SL\'s upgrade handler would set', 'Your license will renew on ' . date_i18n( $date_fmt, $sl_new_expiry ) . '. You won’t be charged twice.' === $term_line, [ 'got' => $term_line, 'expected_date' => date_i18n( $date_fmt, $sl_new_expiry ) ] );
+	t402_check( 'code: renewal_line, different term: the date SL\'s upgrade handler would set', 'Your license will then renew on ' . date_i18n( $date_fmt, $sl_new_expiry ) . '.' === $term_line, [ 'got' => $term_line, 'expected_date' => date_i18n( $date_fmt, $sl_new_expiry ) ] );
 
 	$aa_cart = $make( 'codesaa', 'processing', [ 'upgrade_id' => $aa_id ] );
 	t402_check( 'code: new_plan_extras for All Access', false !== strpos( $code( $aa_cart, 'new_plan_extras' ), 'every GravityKit plugin, with all updates and support' ), $code( $aa_cart, 'new_plan_extras' ) );
@@ -1202,7 +1202,7 @@ katz.co",
 	$soon_line           = $code( $code_cart, 'renewal_soon_line' );
 	$license->expiration = $saved_expiration;
 	$license             = edd_software_licensing()->get_license( $license->ID );
-	t402_check( 'code: renewal_soon_line within 30 days', 'Your license renews on ' . date_i18n( $date_fmt, $soon ) . '. If you’d rather upgrade then, reply and we’ll set it up.' === $soon_line, $soon_line );
+	t402_check( 'code: renewal_soon_line within 30 days', '<p>Your license renews on ' . date_i18n( $date_fmt, $soon ) . '. If you’d rather upgrade then, just reply and we’ll set it up.</p>' === $soon_line, $soon_line );
 
 	$closed_cart = $make( 'codesclosed', 'processing', [ 'license_price_id' => 3 ] );
 	t402_check(
@@ -1223,7 +1223,8 @@ katz.co",
 	// Other code on gkclone calls this filter too (once per upgrade path), so look for this call and for no zero prices.
 	$real_prices = in_array( [ 99.0, $full ], $seen_prices, true ) && ! in_array( [ 0.0, 0.0 ], $seen_prices, true );
 	t402_check( 'code: price_change_line passes the real old and new prices to edd_sl_proration_method', $real_prices, $seen_prices );
-	t402_check( 'upgrade JSON: the renewal paragraph carries no fixed sentence', false === strpos( (string) file_get_contents( WP_PLUGIN_DIR . '/fluent-crm-custom-features/funnels/edd-upgrade-cart.json' ), 'charged twice' ) );
+	$upgrade_json_text = (string) file_get_contents( WP_PLUGIN_DIR . '/fluent-crm-custom-features/funnels/edd-upgrade-cart.json' );
+	t402_check( 'upgrade JSON: no "charged twice", and the emails use neither price_breakdown nor price_change_line', false === strpos( $upgrade_json_text, 'charged twice' ) && false === strpos( $upgrade_json_text, 'price_breakdown' ) && false === strpos( $upgrade_json_text, 'price_change_line' ) );
 
 	$discounts_before = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}edd_adjustments WHERE type = 'discount'" );
 	$no_code          = $code( $code_cart, 'recovery_discount_code', 'NOCODE' );
@@ -1240,20 +1241,36 @@ katz.co",
 			'body'    => \FluentCrm\App\Services\Libs\Parser\Parser::parse( $campaign->email_body, $render_contact ),
 		];
 	}
-	// T402_DUMP=1 saves the rendered emails to /tmp/t402-rendered.json for reading.
+	// T402_DUMP=1 saves the rendered emails to /tmp/t402-rendered.json for reading (below).
+	// Email 3 again with the license renewing in 10 days, for the renews-soon paragraph.
+	$render_soon_date    = current_time( 'timestamp' ) + 10 * DAY_IN_SECONDS;
+	$render_expiration   = (int) $license->expiration;
+	$license->expiration = $render_soon_date;
+	$email3_soon         = \FluentCrm\App\Services\Libs\Parser\Parser::parse( $up_campaigns[2]->email_body, $render_contact );
+	$license->expiration = $render_expiration;
+	$license             = edd_software_licensing()->get_license( $license->ID );
 	if ( getenv( 'T402_DUMP' ) ) {
-		file_put_contents( '/tmp/t402-rendered.json', wp_json_encode( [ 'emails' => $rendered, 'breakdowns' => $breakdown_examples ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
+		file_put_contents( '/tmp/t402-rendered.json', wp_json_encode( [ 'emails' => $rendered, 'email3_renews_soon' => $email3_soon, 'breakdowns' => $breakdown_examples ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
 	}
+	$empty_paragraphs = function ( string $html ): int {
+		return (int) preg_match_all( '#<p[^>]*>\s*</p>#', $html );
+	};
 	$unparsed = array_filter( $rendered, function ( $r ) { return false !== strpos( $r['subject'] . $r['body'], 'ab_cart_edd_upgrade' ); } );
 	t402_check( 'render: no upgrade smart code left unparsed in the 3 emails', 3 === count( $rendered ) && ! $unparsed, array_map( function ( $r ) { return $r['subject']; }, $rendered ) );
 	t402_check( 'render: email 1 subject names the new plan', 'Your upgrade to ' . $plan_name( $download_id, 2 ) . ' is saved' === $rendered[0]['subject'], $rendered[0]['subject'] );
+	$email1_text = wp_strip_all_tags( $rendered[0]['body'] );
 	t402_check(
-		'render: email 1 body has the plans, the breakdown, the renewal line and a recovery link',
-		false !== strpos( $rendered[0]['body'], 'Hi Tess,' ) && false !== strpos( $rendered[0]['body'], 'You pay today: ' . $fmt( $today ) ) && false !== strpos( $rendered[0]['body'], 'Your renewal date stays' ) && false !== strpos( $rendered[0]['body'], 'fc_cart_edd_upgrade' ) && false !== strpos( $rendered[0]['body'], $render_cart->checkout_key ),
-		substr( wp_strip_all_tags( $rendered[0]['body'] ), 0, 600 )
+		'render: email 1 has today\'s price with the credit and renewal sentence, and a recovery link',
+		false !== strpos( $rendered[0]['body'], 'Hey Tess,' ) && false !== strpos( $rendered[0]['body'], 'so the upgrade is just ' . $fmt( $today ) . ' today. Your renewal date stays ' . date_i18n( $date_fmt, (int) $license->expiration ) . '.' )
+			&& false !== strpos( $rendered[0]['body'], 'fc_cart_edd_upgrade' ) && false !== strpos( $rendered[0]['body'], $render_cart->checkout_key ),
+		substr( $email1_text, 0, 700 )
 	);
-	t402_check( 'render: email 2 lists what the new plan adds and the refund policy', false !== strpos( $rendered[1]['body'], 'Up to 3 Sites, instead of Single Site' ) && false !== strpos( $rendered[1]['body'], '30-day refund policy' ) );
-	t402_check( 'render: email 3 repeats the price for an approver', false !== strpos( $rendered[2]['body'], 'You pay today: ' . $fmt( $today ) ) && false !== strpos( $rendered[2]['body'], 'This is our last email about it.' ) );
+	t402_check( 'render: email 1 has no breakdown lines', false === strpos( $email1_text, 'You pay today' ) && false === strpos( $email1_text, 'Credit for' ) && false === strpos( $email1_text, ' until ' ), substr( $email1_text, 0, 700 ) );
+	t402_check( 'render: email 2 lists what the new plan adds and the money-back guarantee', false !== strpos( $rendered[1]['body'], 'Up to 3 Sites, instead of Single Site' ) && false !== strpos( $rendered[1]['body'], '30-day money-back guarantee' ) );
+	t402_check( 'render: email 3 gives today\'s price for an approver', false !== strpos( $rendered[2]['body'], 'is ' . $fmt( $today ) . ' today, with credit for your current' ) && false !== strpos( $rendered[2]['body'], 'This is the last reminder we’ll send about it:' ) );
+	t402_check( 'render: email 3 has no renews-soon sentence and no empty paragraph 200 days out', false === strpos( $rendered[2]['body'], 'Your license renews on' ) && 0 === $empty_paragraphs( $rendered[2]['body'] ), [ 'empty_p' => $empty_paragraphs( $rendered[2]['body'] ) ] );
+	t402_check( 'render: email 3 has the renews-soon paragraph when the license renews within 30 days', false !== strpos( $email3_soon, '<p>Your license renews on ' . date_i18n( $date_fmt, $render_soon_date ) . '. If you’d rather upgrade then, just reply and we’ll set it up.</p>' ) && 0 === $empty_paragraphs( $email3_soon ) );
+	t402_check( 'render: no empty paragraph in any of the 3 emails', 0 === array_sum( array_map( function ( $r ) use ( $empty_paragraphs ) { return $empty_paragraphs( $r['body'] ); }, $rendered ) ) );
 
 	// 14f. Send-time guard: an outside contact walked through the upgrade automation gets no email.
 	$guard_up_backup = get_option( \CustomCRM\AbandonCart\Edd\AllowedDomains::OPTION, null );
@@ -1339,11 +1356,11 @@ katz.co",
 	$aa_after       = edd_software_licensing()->get_license( $aa_license->ID );
 	$aa_order_total = (float) edd_get_order( $aa_bought )->total;
 	if ( $aa_after->is_lifetime ) {
-		$aa_expected_line = 'Your new plan is a lifetime license, so there are no more renewals. You won’t be charged twice.';
+		$aa_expected_line = 'It’s a lifetime license, so there’s nothing to renew.';
 	} elseif ( (int) $aa_after->expiration === $aa_expiry_before ) {
-		$aa_expected_line = 'Your renewal date stays ' . date_i18n( $date_fmt, $aa_expiry_before ) . '. You won’t be charged twice.';
+		$aa_expected_line = 'Your renewal date stays ' . date_i18n( $date_fmt, $aa_expiry_before ) . '.';
 	} else {
-		$aa_expected_line = 'Your license will renew on ' . date_i18n( $date_fmt, (int) $aa_after->expiration ) . '. You won’t be charged twice.';
+		$aa_expected_line = 'Your license will then renew on ' . date_i18n( $date_fmt, (int) $aa_after->expiration ) . '.';
 	}
 	t402_check( 'All Access: SL moved the license to All Access', 808301 === (int) $aa_after->download_id && $aa_price_id === (int) $aa_after->price_id, [ 'download' => $aa_after->download_id, 'price' => $aa_after->price_id ] );
 	t402_check( 'All Access: checkout and the order charge line 3 of the email', 3 === count( $aa_rows ) && (int) round( $aa_checkout * 100 ) === $aa_rows[2]['cents'] && (int) round( $aa_order_total * 100 ) === $aa_rows[2]['cents'], [ 'checkout' => $aa_checkout, 'order' => $aa_order_total, 'email' => $aa_rows[2]['text'] ?? null ] );
