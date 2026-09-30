@@ -932,6 +932,9 @@ katz.co",
 	t402_check( 'control: a newsletter queued for the same contact is untouched', 'scheduled' === $email_status( $stop_paid_news ), $email_status( $stop_paid_news ) );
 	t402_check( 'control: another shopper\'s upgrade cart is untouched', 'processing' === AbandonCartModel::find( $bystander->id )->status );
 
+	// A lost cart nobody stopped still counts as recovered by an upgrade; the control for the stopped cart.
+	$lost_plain = $make( 'lostplain', 'lost' );
+
 	// The paid order is this license's own upgrade: left for the shutdown close, then recovered.
 	$own        = $make( 'stopown', 'processing' );
 	$own_run    = $start_run( $own );
@@ -942,6 +945,9 @@ katz.co",
 	$tracker->closeRenewedCarts();
 	$reset_statics();
 	$own = AbandonCartModel::find( $own->id );
+	$stopped_later = AbandonCartModel::find( $stop_paid->id );
+	t402_check( 'a stopped cart stays lost when its license is upgraded later', 'lost' === $stopped_later->status && ! empty( $stopped_later->cart['stopped_because'] ), [ $stopped_later->status, $stopped_later->cart['stopped_because'] ?? null ] );
+	t402_check( 'control: a lost cart that was not stopped is recovered by the same upgrade', 'recovered' === AbandonCartModel::find( $lost_plain->id )->status, AbandonCartModel::find( $lost_plain->id )->status );
 	t402_check( 'an order that upgrades the cart\'s own license leaves it for the upgrade close', $own_mid && 'processing' === $own_mid->status && 'recovered' === $own->status && (int) $own->order_id === $own_order, [ 'mid' => $own_mid ? $own_mid->status : null, 'end' => $own->status ] );
 
 	$stop_renew     = $make( 'stoprenewed', 'processing' );
@@ -1372,6 +1378,22 @@ katz.co",
 	);
 	t402_check( 'EUR: pricing a EUR email leaves the store currency and USD emails alone', 'USD' === $store_after && 'USD' === $store_back && $fmt( $today ) === $usd_after, [ $store_after, $store_back, $usd_after ] );
 	$eur_evidence = [ 'email' => $eur_today, 'checkout' => $eur_checkout_text, 'usd_cost_converted' => $naive_eur ];
+
+	// Where Multi Currency ignores ?currency= (wp-admin), the prices fall back to the selected
+	// currency and say so, instead of USD amounts under a euro sign.
+	require_once ABSPATH . 'wp-admin/includes/class-wp-screen.php';
+	require_once ABSPATH . 'wp-admin/includes/screen.php';
+	$previous_screen = $GLOBALS['current_screen'] ?? null;
+	WP_Screen::get( 'dashboard' )->set_current_screen();
+	$admin_context = is_admin();
+	$admin_rows    = $parse_breakdown( $code( $eur_cart, 'price_breakdown' ) );
+	$admin_today   = html_entity_decode( $code( $eur_cart, 'today_price' ), ENT_QUOTES, 'UTF-8' );
+	$GLOBALS['current_screen'] = $previous_screen;
+	t402_check(
+		'EUR cart where ?currency= is ignored: priced and labelled in the store currency',
+		$admin_context && ! is_admin() && 3 === count( $admin_rows ) && '$' === $admin_rows[2]['symbol'] && $admin_rows[0]['cents'] - $admin_rows[1]['cents'] === $admin_rows[2]['cents'] && html_entity_decode( $fmt( $today ), ENT_QUOTES, 'UTF-8' ) === $admin_today,
+		[ 'admin' => $admin_context, 'rows' => wp_list_pluck( $admin_rows, 'text' ), 'today' => $admin_today ]
+	);
 	if ( getenv( 'T402_DUMP' ) ) {
 		file_put_contents( '/tmp/t402-evidence.json', wp_json_encode( [ 'breakdowns' => $breakdown_examples, 'all_access' => $aa_evidence, 'eur' => $eur_evidence ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
 	}
