@@ -46,7 +46,7 @@ EMAILS = [
         + para("Looks like you didn’t finish upgrading to " + NEW + ". It’s saved, so you can pick up where you "
                "left off:")
         + button("Finish My Upgrade", URL)
-        + para("You get credit for the time left on your " + CURRENT + " license, so the upgrade is just " + TODAY
+        + para("You get credit for your current " + CURRENT + " license, so the upgrade is just " + TODAY
                + " today. " + RENEWAL)
         + para("If anything went wrong at checkout, just reply and we’ll sort it out.")
         + SIGN
@@ -78,7 +78,7 @@ EMAILS = [
         header()
         + greeting("Hey " + NAME + ",")
         + para("If someone else approves purchases, feel free to forward them this email. Upgrading to " + NEW
-               + " is " + TODAY + " today, with credit for the time left on your " + CURRENT + " license.")
+               + " is " + TODAY + " today, with credit for your current " + CURRENT + " license.")
         # Its own <p> when the license renews within 30 days; empty otherwise, so nothing is left behind.
         + raw(RENEWAL_SOON)
         + para("This is the last reminder we’ll send about it:")
