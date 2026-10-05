@@ -30,23 +30,27 @@ EMAILS = [
     (
         "Email 1: Reminder",
         15, "minutes",
-        "Complete your purchase—your website will thank you!",
-        "You left powerful Gravity Forms add-ons in your cart 🛒",
+        "Complete your purchase: your website will thank you!",
+        "Everything you picked is still in your cart\u00a0🛒",
         header()
         + greeting("Hey " + NAME + ",")
-        + para("Did you forget to check out? Your cart is saved, so you can pick up right where you left off. 🛒")
+        + para("Did you forget to check out? Your cart is saved, so you can pick up right where you left off.&nbsp;🛒")
         + para("Here is what you left in your cart:")
         + raw(CART)
         + button("Return and Complete Purchase", URL)
-        + para("GravityKit gives you a toolbox of essential add-ons for Gravity Forms, so you can build powerful "
-               "applications on your website with a drag-and-drop interface. No coding knowledge required!")
-        + para("Ready to extend your website with powerful Gravity Forms add-ons? "
-               '<a href="' + URL + '">Go back and complete your purchase!</a>')
-        + para("If you need help with something, just reply to this email and we’ll respond 😊")
+        # Written for Carol (Marketing/Hidden Multipliers): someone asks her for something the entries
+        # list can't produce, she values building it without a developer, and she doubts it fits her case.
+        + para("A refresher: GravityKit turns your Gravity Forms entries into the things people keep asking you "
+               "for. A member directory. A dashboard your team can log in to. A report your boss can open and "
+               "share. You build it yourself, without hiring a developer.")
+        + para("Not sure it does the exact thing you need? Reply and tell me what you’re building, and I’ll tell "
+               "you whether GravityKit can do it.")
+        + para('<a href="' + URL + '">Go back and complete your purchase.</a>')
         + SIGN
-        + para("P.S. " + PS_CALL)
-        + para("P.P.S. Do you know about our 30-day money-back guarantee? If you’re not happy with your purchase, "
-               "we will always refund you."),
+        + para("P.S. Not sure which plugins you need? "
+               '<a href="' + CALL + '">Book a free 1-on-1 call with me</a> and we’ll work it out together.')
+        + para("P.P.S. Every purchase comes with a 30-day guarantee: if GravityKit doesn’t do what you need, tell "
+               "us within 30 days of buying and we’ll refund you in full."),
         "abandoned-cart-1",
     ),
     (
