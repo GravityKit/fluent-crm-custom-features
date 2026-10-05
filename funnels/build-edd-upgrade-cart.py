@@ -16,8 +16,9 @@ import os
 G = "ab_cart_edd_upgrade"
 NAME = "{{contact.first_name|there}}"
 URL = "##" + G + ".recovery_url##"
-# Product names without the site count; NEW_NAME is "All Access Pass" or "the bigger GravityImport plan",
-# written to sit mid-sentence.
+# Product names without the site count; NEW_NAME is "All Access Pass", or for the same product what the
+# upgrade adds ("a GravityImport plan with more sites", "a lifetime GravityImport plan"), written to sit
+# mid-sentence.
 CURRENT_PRODUCT = "{{" + G + ".current_product|GravityKit}}"
 NEW_NAME = "{{" + G + ".new_plan_name|your new plan}}"
 TODAY = "{{" + G + ".today_price}}"
@@ -76,7 +77,7 @@ EMAILS = [
     (
         "Upgrade email 3: Run it by someone",
         3, "days",
-        "Last reminder: your upgrade to " + NEW_NAME,
+        "Last reminder: You were about to upgrade to " + NEW_NAME,
         "Your upgrade is still saved. Easy to forward to whoever approves purchases.",
         header()
         + greeting("Hey " + NAME + ",")
@@ -89,9 +90,11 @@ EMAILS = [
         + para("If someone else approves purchases, forward them this email. They can finish the upgrade with the "
                "button below.")
         + button("Finish My Upgrade", URL)
+        # The fallback for a reader who is not ready to buy; it replaces the P.S. the other emails carry.
+        + para("Not ready yet, or have questions first? Just reply to this email, or "
+               '<a href="' + CALL + '">book a free 1-on-1 call with me</a>.')
         + para("This is the last email we’ll send about this upgrade.")
-        + SIGN
-        + para("P.S. " + PS_CALL),
+        + SIGN,
         "upgrade-cart-3",
     ),
 ]
