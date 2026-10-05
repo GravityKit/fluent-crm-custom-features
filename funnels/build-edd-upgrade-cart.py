@@ -62,7 +62,8 @@ EMAILS = [
         "A quick question about your upgrade.",
         header()
         + greeting("Hey " + NAME + ",")
-        + para("Still thinking about " + NEW_NAME + "? With it, you’d get:")
+        + para("You started upgrading to " + NEW_NAME + " but didn’t finish. Here’s what it adds to your "
+               + CURRENT_PRODUCT + " license:")
         + raw(EXTRAS)
         + para("Not sure it fits what you’re building? Reply and tell us about your project. We’ll give you a "
                "straight answer, even if the answer is “you don’t need it.”")
@@ -75,16 +76,20 @@ EMAILS = [
     (
         "Upgrade email 3: Run it by someone",
         3, "days",
-        "Need to run your upgrade by someone?",
-        "Forward this to whoever approves purchases.",
+        "Last reminder: your upgrade to " + NEW_NAME,
+        "Your upgrade is still saved. Easy to forward to whoever approves purchases.",
         header()
         + greeting("Hey " + NAME + ",")
-        + para("If someone else approves purchases, feel free to forward them this email. Upgrading to "
-               + NEW_NAME + " is " + TODAY + " today, with credit for your current " + CURRENT_PRODUCT + " license.")
+        # The email may be forwarded to whoever approves purchases, so it opens by saying what was left unfinished.
+        + para("A few days ago, you started upgrading your " + CURRENT_PRODUCT + " license to " + NEW_NAME
+               + " but didn’t finish checking out. Your upgrade is still saved.")
+        + para("Upgrading is " + TODAY + " today, with credit for your current " + CURRENT_PRODUCT + " license.")
         # Its own <p> when the license renews within 30 days; empty otherwise, so nothing is left behind.
         + raw(RENEWAL_SOON)
-        + para("This is the last reminder we’ll send about it:")
+        + para("If someone else approves purchases, forward them this email. They can finish the upgrade with the "
+               "button below.")
         + button("Finish My Upgrade", URL)
+        + para("This is the last email we’ll send about this upgrade.")
         + SIGN
         + para("P.S. " + PS_CALL),
         "upgrade-cart-3",

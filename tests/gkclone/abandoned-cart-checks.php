@@ -1278,8 +1278,10 @@ katz.co",
 		'Is the bigger GravityImport plan right for you?' === $rendered[1]['subject'],
 		false !== strpos( $rendered[0]['body'], 'Looks like you didn’t finish upgrading to the bigger GravityImport plan. It’s saved' ),
 		false !== strpos( $rendered[0]['body'], 'You get credit for your current GravityImport license, so the upgrade is just ' . $fmt( $today ) . ' today.' ),
-		false !== strpos( $rendered[1]['body'], 'Still thinking about the bigger GravityImport plan? With it, you’d get:' ),
-		false !== strpos( $rendered[2]['body'], 'Upgrading to the bigger GravityImport plan is ' . $fmt( $today ) . ' today, with credit for your current GravityImport license.' ),
+		'Last reminder: your upgrade to the bigger GravityImport plan' === $rendered[2]['subject'],
+		false !== strpos( $rendered[1]['body'], 'You started upgrading to the bigger GravityImport plan but didn’t finish. Here’s what it adds to your GravityImport license:' ),
+		false !== strpos( $rendered[2]['body'], 'A few days ago, you started upgrading your GravityImport license to the bigger GravityImport plan but didn’t finish checking out. Your upgrade is still saved.' ),
+		false !== strpos( $rendered[2]['body'], 'Upgrading is ' . $fmt( $today ) . ' today, with credit for your current GravityImport license.' ),
 	];
 	t402_check( 'render, bigger tier: subjects and sentences name "the bigger GravityImport plan"', ! in_array( false, $tier_sentences, true ), [ 'results' => $tier_sentences, 'subjects' => wp_list_pluck( $rendered, 'subject' ) ] );
 	$aa_sentences = [
@@ -1287,8 +1289,10 @@ katz.co",
 		'Is All Access Pass right for you?' === $rendered_aa[1]['subject'],
 		false !== strpos( $rendered_aa[0]['body'], 'Looks like you didn’t finish upgrading to All Access Pass. It’s saved' ),
 		false !== strpos( $rendered_aa[0]['body'], 'You get credit for your current GravityImport license, so the upgrade is just ' ),
-		false !== strpos( $rendered_aa[1]['body'], 'Still thinking about All Access Pass? With it, you’d get:' ),
-		false !== strpos( $rendered_aa[2]['body'], 'Upgrading to All Access Pass is ' ) && false !== strpos( $rendered_aa[2]['body'], ' today, with credit for your current GravityImport license.' ),
+		'Last reminder: your upgrade to All Access Pass' === $rendered_aa[2]['subject'],
+		false !== strpos( $rendered_aa[1]['body'], 'You started upgrading to All Access Pass but didn’t finish. Here’s what it adds to your GravityImport license:' ),
+		false !== strpos( $rendered_aa[2]['body'], 'A few days ago, you started upgrading your GravityImport license to All Access Pass but didn’t finish checking out.' ),
+		false !== strpos( $rendered_aa[2]['body'], 'Upgrading is ' ) && false !== strpos( $rendered_aa[2]['body'], ' today, with credit for your current GravityImport license.' ),
 	];
 	t402_check( 'render, All Access: subjects and sentences name "All Access Pass"', ! in_array( false, $aa_sentences, true ), [ 'results' => $aa_sentences, 'subjects' => wp_list_pluck( $rendered_aa, 'subject' ) ] );
 	// Plan names with a site count use an em dash ("GravityImport — Single Site"); none may appear.
@@ -1306,7 +1310,7 @@ katz.co",
 	);
 	t402_check( 'render: email 1 has no breakdown lines', false === strpos( $email1_text, 'You pay today' ) && false === strpos( $email1_text, 'Credit for' ) && false === strpos( $email1_text, ' until ' ), substr( $email1_text, 0, 700 ) );
 	t402_check( 'render: email 2 lists what the new plan adds and the money-back guarantee', false !== strpos( $rendered[1]['body'], 'Up to 3 Sites, instead of Single Site' ) && false !== strpos( $rendered[1]['body'], '30-day money-back guarantee' ) );
-	t402_check( 'render: email 3 gives today\'s price for an approver', false !== strpos( $rendered[2]['body'], 'is ' . $fmt( $today ) . ' today, with credit for your current' ) && false !== strpos( $rendered[2]['body'], 'This is the last reminder we’ll send about it:' ) );
+	t402_check( 'render: email 3 gives today\'s price for an approver', false !== strpos( $rendered[2]['body'], 'is ' . $fmt( $today ) . ' today, with credit for your current' ) && false !== strpos( $rendered[2]['body'], 'If someone else approves purchases, forward them this email.' ) && false !== strpos( $rendered[2]['body'], 'This is the last email we’ll send about this upgrade.' ) );
 	t402_check( 'render: email 3 has no renews-soon sentence and no empty paragraph 200 days out', false === strpos( $rendered[2]['body'], 'Your license renews on' ) && 0 === $empty_paragraphs( $rendered[2]['body'] ), [ 'empty_p' => $empty_paragraphs( $rendered[2]['body'] ) ] );
 	t402_check( 'render: email 3 has the renews-soon paragraph when the license renews within 30 days', false !== strpos( $email3_soon, '<p>Your license renews on ' . date_i18n( $date_fmt, $render_soon_date ) . '. If you’d rather upgrade then, just reply and we’ll set it up.</p>' ) && 0 === $empty_paragraphs( $email3_soon ) );
 	t402_check( 'render: no empty paragraph in any of the 3 emails', 0 === array_sum( array_map( function ( $r ) use ( $empty_paragraphs ) { return $empty_paragraphs( $r['body'] ); }, $rendered ) ) );
