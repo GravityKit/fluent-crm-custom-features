@@ -412,7 +412,7 @@ class EddUpgradeCartDriver extends EddCartDriver {
 			case 'current_product':
 				return self::planName( (int) $license->download_id, null );
 			case 'new_plan_name':
-				return self::newPlanName( (int) $license->download_id, $new_download );
+				return self::newPlanName( $license, $new_download, $new_price_id );
 			case 'full_price':
 				$lines = $this->priceLines( $cart, $license, $item, $path );
 				return $this->formatPrice( $lines['full_price'], $lines['currency'] );
@@ -452,19 +452,46 @@ class EddUpgradeCartDriver extends EddCartDriver {
 
 	/**
 	 * How the emails name the new plan, without the site count: the product when the upgrade moves
-	 * to another product ("All Access Pass"), or "the bigger {product} plan" for a bigger tier of the
-	 * same product. Written to sit mid-sentence, so the "the" stays lowercase.
+	 * to another product ("All Access Pass"). For a different plan of the same product it names
+	 * what changes: "a GravityImport plan with more sites", "a lifetime GravityImport plan", or both.
+	 * Written to sit mid-sentence, so the article stays lowercase.
 	 *
-	 * @param int $current_download The license's download.
-	 * @param int $new_download     The upgrade path's download.
+	 * @param \EDD_SL_License $license      The license being upgraded.
+	 * @param int             $new_download The upgrade path's download.
+	 * @param int|null        $new_price_id The upgrade path's price, when the product has variable prices.
 	 */
-	private static function newPlanName( int $current_download, int $new_download ): string {
+	private static function newPlanName( $license, int $new_download, $new_price_id ): string {
+		$current_download = (int) $license->download_id;
+
 		if ( $new_download !== $current_download ) {
 			return self::planName( $new_download, null );
 		}
 
+		$product = self::planName( $current_download, null );
+
+		// An activation limit of 0 means unlimited sites.
+		$current_limit = (int) edd_software_licensing()->get_price_activation_limit( $current_download, $license->price_id );
+		$new_limit     = (int) edd_software_licensing()->get_price_activation_limit( $current_download, $new_price_id );
+		$more_sites    = 0 !== $current_limit && ( 0 === $new_limit || $new_limit > $current_limit );
+		$to_lifetime   = ! $license->is_lifetime && edd_software_licensing()->get_price_is_lifetime( $current_download, $new_price_id );
+
+		if ( $more_sites && $to_lifetime ) {
+			/* translators: %s: product name, e.g. GravityImport */
+			return sprintf( esc_html__( 'a lifetime %s plan with more sites', 'fluent-crm-custom-features' ), $product );
+		}
+
+		if ( $more_sites ) {
+			/* translators: %s: product name, e.g. GravityImport */
+			return sprintf( esc_html__( 'a %s plan with more sites', 'fluent-crm-custom-features' ), $product );
+		}
+
+		if ( $to_lifetime ) {
+			/* translators: %s: product name, e.g. GravityImport */
+			return sprintf( esc_html__( 'a lifetime %s plan', 'fluent-crm-custom-features' ), $product );
+		}
+
 		/* translators: %s: product name, e.g. GravityImport */
-		return sprintf( esc_html__( 'the bigger %s plan', 'fluent-crm-custom-features' ), self::planName( $current_download, null ) );
+		return sprintf( esc_html__( 'a different %s plan', 'fluent-crm-custom-features' ), $product );
 	}
 
 	/**
