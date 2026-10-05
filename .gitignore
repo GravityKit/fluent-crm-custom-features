@@ -47,3 +47,4 @@ phpcs-report.xml
 *.bak
 *.swp
 *~
+__pycache__/
