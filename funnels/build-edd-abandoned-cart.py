@@ -42,7 +42,8 @@ EMAILS = [
         + para("A refresher: GravityKit turns your Gravity Forms entries into the things people keep asking you "
                "for. A member directory. A dashboard your team can log in to. A report your boss can open and "
                "share. You build it yourself, without hiring a developer.")
-        + para("Not sure it does what you need? Let me know, and I’ll tell you whether GravityKit can do it.")
+        + para("Not sure it does what you need? Reply and let me know. I’ll give you honest feedback about whether "
+               "GravityKit is the right fit.")
         + para('<a href="' + URL + '">Go back and complete your purchase.</a>')
         + SIGN
         + para("P.S. Not sure which plugins you need? "
