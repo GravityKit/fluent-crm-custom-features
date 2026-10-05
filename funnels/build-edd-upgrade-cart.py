@@ -87,7 +87,7 @@ EMAILS = [
         + para("Upgrading is " + TODAY + " today, with credit for your current " + CURRENT_PRODUCT + " license.")
         # Its own <p> when the license renews within 30 days; empty otherwise, so nothing is left behind.
         + raw(RENEWAL_SOON)
-        + para("If someone else approves purchases, forward them this email. They can finish the upgrade with the "
+        + para("If someone else approves purchases, please forward them this email. They can finish the upgrade with the "
                "button below.")
         + button("Finish My Upgrade", URL)
         # The fallback for a reader who is not ready to buy; it replaces the P.S. the other emails carry.
