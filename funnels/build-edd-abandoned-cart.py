@@ -22,8 +22,7 @@ from email_blocks import bullets, button, greeting, header, para, raw, signature
 
 SIGN = signature(["Zack Katz", "Founder, GravityKit"])
 CALL = "https://www.gravitykit.com/consultation/"
-PS_CALL = ("Not sure which plugins you need, or whether GravityKit can do what you have in mind? "
-           '<a href="' + CALL + '">Book a free 1-on-1 call with me</a> and we’ll work it out together.')
+
 
 # Each email: (title, wait amount, wait unit, subject, preheader, body, utm_campaign)
 EMAILS = [
@@ -33,7 +32,7 @@ EMAILS = [
         "Complete your purchase: your website will thank you!",
         "Everything you picked is still in your cart\u00a0🛒",
         header()
-        + greeting("Hey " + NAME + ",")
+        + greeting("Hi " + NAME + ",")
         + para("Did you forget to check out? Your cart is saved, so you can pick up right where you left off.&nbsp;🛒")
         + para("Here is what you left in your cart:")
         + raw(CART)
@@ -43,8 +42,7 @@ EMAILS = [
         + para("A refresher: GravityKit turns your Gravity Forms entries into the things people keep asking you "
                "for. A member directory. A dashboard your team can log in to. A report your boss can open and "
                "share. You build it yourself, without hiring a developer.")
-        + para("Not sure it does the exact thing you need? Reply and tell me what you’re building, and I’ll tell "
-               "you whether GravityKit can do it.")
+        + para("Not sure it does what you need? Let me know, and I’ll tell you whether GravityKit can do it.")
         + para('<a href="' + URL + '">Go back and complete your purchase.</a>')
         + SIGN
         + para("P.S. Not sure which plugins you need? "
@@ -56,42 +54,45 @@ EMAILS = [
     (
         "Email 2: Objection handling",
         1425, "minutes",
-        "Why GravityKit is right for you 👌",
-        "Your cart is saved—complete your purchase whenever you’re ready.",
+        "Will GravityKit do what you need?",
+        "Try it on a live demo before you buy.",
         header()
-        + greeting("Hey " + NAME + ",")
-        + para("You still have " + PRODUCTS + " in your cart. Go back to our site to complete checkout and get "
-               "powerful Gravity Forms add-ons working on your site.")
-        + para("With our 30-day money-back guarantee and no-hassle refund policy, you can buy with confidence.")
-        + button("Go Back and Complete Your Purchase", URL)
-        + para("Oh, and just in case you missed this while browsing our website…")
+        + greeting("Hi " + NAME + ",")
+        + para("You still have " + PRODUCTS + " in your cart.")
+        + para("If you’re not sure GravityKit will do what you need, here are three ways to find out before you pay:")
         + bullets([
-            'You can <a href="https://site.try.gravitykit.com/">view our live demos</a> and try our plugins before you buy.',
-            "With GravityView, you can let users edit the entries they create.",
-            "You can upgrade your license at any time from your Account page, and only pay the difference in price.",
-            '<a href="https://www.gravitykit.com/pricing/#faq">Get answers to more of your questions here</a>.',
+            '<strong><a href="https://site.try.gravitykit.com/">Try it on a live demo site.</a></strong> '
+            "Build with real form entries, nothing to install.",
+            "<strong>Let me know.</strong> Reply to this email and I’ll tell you whether it fits and which plugins "
+            "you need.",
+            '<strong>Talk it through with me.</strong> <a href="' + CALL + '">Book a free 1-on-1 call</a> and '
+            "we’ll work it out together.",
         ])
-        + para('Ready to get started? <a href="' + URL + '">Go back and complete your purchase</a>.')
+        # Hidden Multipliers: the cost of waiting is the inciting event that has not gone away.
+        + para("Every week you wait is another week of copying entries into spreadsheets, sending people the "
+               "latest list by hand, and logging in to the WordPress dashboard to find the one entry someone "
+               "asked about.")
+        + button("Go Back and Complete Your Purchase", URL)
         + SIGN
-        + para("P.S. " + PS_CALL),
+        + para("P.S. Every purchase comes with a 30-day guarantee: if GravityKit doesn’t do what you need, tell "
+               "us within 30 days of buying and we’ll refund you in full."),
         "abandoned-cart-2",
     ),
     (
         "Email 3: Discount",
         3, "days",
-        "Get " + AMOUNT + " off your GravityKit order (expires soon)",
-        "A special gift, just for you.",
+        AMOUNT + " off your GravityKit order, for 48 hours",
+        "Your discount is already applied to your cart.",
         header()
-        + greeting("Hey " + NAME + ",")
-        + para("It’s Zack here with a special gift: a coupon for " + AMOUNT + " off your GravityKit order!")
-        + para("Use code <strong>" + CODE + "</strong> at checkout to take " + AMOUNT
-               + " off the items in your cart. It’s already applied when you use the button below, and it’s valid "
-               "for the next 48 hours only.")
+        + greeting("Hi " + NAME + ",")
+        + para("If price is what’s holding you back, here’s " + AMOUNT + " off the items in your cart. Use code "
+               "<strong>" + CODE + "</strong> at checkout, or use the button below and it’s already applied. "
+               "It’s valid for the next 48 hours.")
         + raw(CART)
         + button("Complete Purchase and Save " + AMOUNT, URL)
-        + para("Remember, this coupon expires in 48 hours—so don’t wait!")
         + SIGN
-        + para("P.S. " + PS_CALL),
+        + para("P.S. Not sure which plugins you need? "
+               '<a href="' + CALL + '">Book a free 1-on-1 call with me</a> and we’ll work it out together.'),
         "abandoned-cart-5",
     ),
 ]
