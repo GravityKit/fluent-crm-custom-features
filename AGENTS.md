@@ -2,6 +2,8 @@
 
 Custom FluentCRM features for www.gravitykit.com: EDD cart tracking (new purchases, renewals, license upgrades), the cart email automations, and related helpers.
 
+Team-facing overview (what the flows send, who is held back, how to change copy): the private doc [Abandoned cart emails](https://www.gravitykit.com/docs/internal/email-newsletter/abandoned-cart-emails/). Keep it in step with changes here.
+
 ## Shipping
 
 - Pushing PHP or `assets/` to `main` deploys to production (`.github/workflows/deploy.yml`). Funnel JSON and Python builders do not deploy; they are imported by hand.
@@ -17,18 +19,30 @@ Custom FluentCRM features for www.gravitykit.com: EDD cart tracking (new purchas
 | #55 "Abandoned upgrade (EDD) – 3 emails" | `fc_ab_cart_simulation_edd_upgrade` | `funnels/build-edd-upgrade-cart.py` |
 
 - **Edit copy in the builder, run it (`python3 funnels/build-*.py`), commit the regenerated JSON.** Never hand-edit the JSON.
-- **Live copy is stored twice** in FluentCRM: in the campaign (`wp_fc_campaigns`, e.g. 10940-10942 for #55) and in the automation step's settings (`wp_fc_funnel_sequences.settings['campaign']`). A live change must update both, and the repo builder must change in the same session, or the next re-import restores the old text without any warning.
+- **Live copy is stored twice** in FluentCRM: in the campaign (`wp_fc_campaigns`: 10933-10935 for #53, 10936-10937 for #54, 10940-10942 for #55) and in the automation step's settings (`wp_fc_funnel_sequences.settings['campaign']`). Sends read the campaign; the step copy is what FluentCRM's editor and a re-import write back. A live change must update both, and the repo builder must change in the same session. On 2026-10-06 all eight step copies were found stale after campaign-only updates and were synced (backup: `MonoKit/Operations/Backups/cart-automation-steps-20261006.json`).
 - To change live copy safely: back up both rows, assert the old text is present exactly once in each, write, then read both back. Do it with `wp eval-file` over the `gk:ssh` wrapper.
 - **Check merge tags by rendering, not by reading.** Render each email with `FluentCrm\App\Services\Libs\Parser\Parser::parse()` against a contact that has a cart, and assert no `{{` or `##` remains and no empty `<p>`. To see the real email, send a test with the FluentCRM MCP `send-test-email` (`campaign_id` plus `against_contact_id`); test sends don't enroll anyone or log to email history.
 - Test fixture on live: contact 4288 (zack@katz.co) with upgrade cart 32 (GravityImport license 21494 to All Access Pass).
 
 ### Who gets cart emails
 
-- `AllowedDomains` (option `customcrm_edd_ab_cart_allowed_domains`, currently `gravitykit.com, katz.co`) holds back every cart from other addresses. `CartEmailGuard` cancels any send to an address outside the list. As of 2026-10-05 no customer has received a cart email.
+- `AllowedDomains` (option `customcrm_edd_ab_cart_allowed_domains`) holds back every cart from addresses outside the listed domains, and `CartEmailGuard` cancels any send to them. **Empty since 2026-10-05, so every shopper is emailed.** Set it again to go back to internal-only testing.
+- Held back before an automation starts (`isWithinCoolOffPeriod` on each driver): the allowlist, `CartEmailStop::holdBack()` (used the stop link within 30 days), FluentCRM's cool-off (bought within `cool_off_period_days`, 10 on live), and the resend cap (21 days; 60 for upgrades). The resend cap also reads `PriorRecipients` (option `customcrm_edd_ab_cart_prior_recipients`), which is **empty on live**, so Recapture's last recipients are not covered.
 - Staff roles are excluded from cart tracking, but only when logged in. A cart saved logged out under a team address runs the full sequence.
 - Conversion Bridge does not track logged-in admins. Test purchases for tracking must be made logged out.
 
-### Known issues before opening the allowlist to customers
+### Stop link (`CartEmailStop`)
+
+- Every cart email ends with `stop_line()` from `funnels/email_blocks.py`, linking `##ab_cart_*.stop_url##`.
+- The link opens a confirmation page; the stop happens on the form post, because mail scanners open every link. Confirming opts out the cart and the contact's other open carts, cancels unsent cart emails, and sets contact meta `ab_cart_emails_stopped_at`; `holdBack()` then holds new carts for 30 days (`customcrm/edd_ab_cart/stop_days`).
+- **The page is served from `/wp-json/gk-cart/v1/stop`, never from `/?…`.** On live, any 200 at the home URL comes back `public, max-age=60` with a month-long `Expires` whatever WordPress sends, and Cloudflare serves stale copies. `/wp-json/`, `/checkout/` and `/account/` stay `no-store`. `admin-post.php` is uncached too but prints other plugins' admin notices above the page. Links sent before the fix point at the home URL and are still handled.
+- The stop line is a classed `div` in a raw HTML block: the FluentCRM template forces `margin-bottom` with `!important` on `p` and on unclassed top-level `div`.
+
+### Re-running a contact through an automation
+
+Deleting the old `fc_funnel_subscribers` run is not enough. FluentCRM skips any step that already has an `fc_funnel_metrics` row for that funnel, sequence and contact, so the new run advances and sends nothing. Delete the contact's old metrics rows for the funnel too.
+
+### Known issues
 
 - **Upgrade emails don't check license ownership.** Software Licensing lets any email check out an upgrade for any license key, and the upgrade driver doesn't check the cart email owns the license. An email can tell someone about "your current license" when it isn't theirs.
 - On live cart 32 (2026-09-30) the 60-minute wait before upgrade email 1 took 29 seconds. It was probably forced by a test; confirm before relying on the timing.
