@@ -27,7 +27,7 @@ class CartEmailStop {
 	/**
 	 * Days a contact who used the link gets no cart emails. Filter: `customcrm/edd_ab_cart/stop_days`.
 	 */
-	public const STOP_DAYS = 90;
+	public const STOP_DAYS = 30;
 
 	/**
 	 * Notes for carts held back in this request, keyed by cart ID.
@@ -76,7 +76,7 @@ class CartEmailStop {
 		}
 
 		$stopped_at = (int) fluentcrm_get_subscriber_meta( $contact_id, self::META_KEY, 0 );
-		$days       = (int) apply_filters( 'customcrm/edd_ab_cart/stop_days', self::STOP_DAYS, $cart );
+		$days       = self::stopDays( $cart );
 		$is_stopped = $stopped_at && $days > 0 && $stopped_at >= time() - ( $days * DAY_IN_SECONDS );
 
 		if ( ! $is_stopped ) {
@@ -131,12 +131,12 @@ class CartEmailStop {
 
 		if ( $is_post ) {
 			self::stop( $cart );
-			self::render( __( 'Done. No more cart reminders.', 'fluent-crm-custom-features' ), __( 'You won’t get any more emails about what you left in your cart. You’ll still get receipts, license emails and anything else you signed up for.', 'fluent-crm-custom-features' ) );
+			self::render( __( 'Done. No more cart reminders.', 'fluent-crm-custom-features' ), self::promise( $cart ) );
 		}
 
 		self::render(
 			__( 'Stop cart reminders?', 'fluent-crm-custom-features' ),
-			__( 'We’ll stop emailing you about what you left in your cart. You’ll still get receipts, license emails and anything else you signed up for.', 'fluent-crm-custom-features' ),
+			self::promise( $cart ),
 			esc_url( self::url( $cart ) )
 		);
 	}
@@ -177,6 +177,28 @@ class CartEmailStop {
 		foreach ( AbandonCartModel::where( 'contact_id', $contact_id )->where( 'id', '!=', $cart->id )->whereIn( 'status', [ 'draft', 'pending', 'processing' ] )->get() as $other ) {
 			$other->optOut();
 		}
+	}
+
+	/**
+	 * Days a contact who used the link gets no cart emails.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	private static function stopDays( AbandonCartModel $cart ): int {
+		return (int) apply_filters( 'customcrm/edd_ab_cart/stop_days', self::STOP_DAYS, $cart );
+	}
+
+	/**
+	 * What the page tells the shopper the stop does, with the real number of days.
+	 *
+	 * @param AbandonCartModel $cart
+	 */
+	private static function promise( AbandonCartModel $cart ): string {
+		return sprintf(
+			/* translators: %d: number of days */
+			_n( 'We won’t send you any cart reminders for the next %d day. You’ll still get receipts, license emails and anything else you signed up for.', 'We won’t send you any cart reminders for the next %d days. You’ll still get receipts, license emails and anything else you signed up for.', self::stopDays( $cart ), 'fluent-crm-custom-features' ),
+			self::stopDays( $cart )
+		);
 	}
 
 	/**
