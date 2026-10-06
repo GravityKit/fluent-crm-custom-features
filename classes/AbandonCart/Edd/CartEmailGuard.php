@@ -65,7 +65,7 @@ class CartEmailGuard {
 	 *
 	 * @return int[]
 	 */
-	private static function cartCampaignIds(): array {
+	public static function cartCampaignIds(): array {
 		$funnel_ids = Funnel::whereIn( 'trigger_name', self::CART_TRIGGERS )->pluck( 'id' )->toArray();
 
 		return self::campaignIdsFor( array_map( 'intval', $funnel_ids ) );

@@ -58,7 +58,7 @@ class EddRenewalCartDriver extends EddCartDriver {
 	 * @param AbandonCartModel $cart
 	 */
 	public function isWithinCoolOffPeriod( AbandonCartModel $cart ) {
-		return AllowedDomains::holdBack( $cart ) || $this->allLicensesRenewed( $cart ) || $this->sentRecently( $cart );
+		return AllowedDomains::holdBack( $cart ) || CartEmailStop::holdBack( $cart ) || $this->allLicensesRenewed( $cart ) || $this->sentRecently( $cart );
 	}
 
 	/**
