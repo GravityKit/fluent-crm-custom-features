@@ -80,7 +80,7 @@ def stop_line(href):
     """Small last line linking to the cart's "Stop these emails" page (not the full unsubscribe)."""
     return (
         '<!-- wp:paragraph {"style":{"color":{"text":"#6b7280"}},"fontSize":"small"} -->\n'
-        '<p class="has-text-color has-small-font-size" style="color:#6b7280">'
+        '<p class="has-text-color has-small-font-size" style="color:#6b7280;font-size:14px">'
         'Don’t want these reminders? <a href="' + href + '">Stop these emails</a>.</p>\n'
         "<!-- /wp:paragraph -->\n\n"
     )
