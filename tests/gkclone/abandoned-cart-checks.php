@@ -1304,7 +1304,7 @@ katz.co",
 	$email1_text = wp_strip_all_tags( $rendered[0]['body'] );
 	t402_check(
 		'render: email 1 has today\'s price with the credit and renewal sentence, and a recovery link',
-		false !== strpos( $rendered[0]['body'], 'Hey Tess,' ) && false !== strpos( $rendered[0]['body'], 'so the upgrade is just ' . $fmt( $today ) . ' today. Your renewal date stays ' . date_i18n( $date_fmt, (int) $license->expiration ) . '.' )
+		false !== strpos( $rendered[0]['body'], 'Hi Tess,' ) && false !== strpos( $rendered[0]['body'], 'so the upgrade is just ' . $fmt( $today ) . ' today. Your renewal date stays ' . date_i18n( $date_fmt, (int) $license->expiration ) . '.' )
 			&& false !== strpos( $rendered[0]['body'], 'fc_cart_edd_upgrade' ) && false !== strpos( $rendered[0]['body'], $render_cart->checkout_key ),
 		substr( $email1_text, 0, 700 )
 	);

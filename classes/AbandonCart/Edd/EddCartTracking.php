@@ -1257,6 +1257,7 @@ class EddCartTracking {
 			'shortcodes' => $extra_codes + ( $is_upgrade ? [] : $discount_codes ) + [
 				'{{' . $group . '.cart_items_table}}'   => __( 'Cart Items', 'fluent-crm-custom-features' ),
 				'##' . $group . '.recovery_url##'       => __( 'Cart Recovery URL', 'fluent-crm-custom-features' ),
+				'##' . $group . '.stop_url##'           => __( 'Stop These Emails URL', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.first_product_name}}' => __( 'First Product Name', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.product_names}}'      => __( 'All Product Names', 'fluent-crm-custom-features' ),
 				'{{' . $group . '.cart_total}}'         => __( 'Cart Total', 'fluent-crm-custom-features' ),
@@ -1312,6 +1313,8 @@ class EddCartTracking {
 				return $this->driver->getCartItemsHtml( $cart );
 			case 'recovery_url':
 				return $this->driver->getRecoveryUrl( $cart ) ?: edd_get_checkout_uri();
+			case 'stop_url':
+				return CartEmailStop::url( $cart ) ?: home_url( '/' );
 			case 'first_product_name':
 				return $items ? esc_html( (string) $items[0]['title'] ) : $default_value;
 			case 'product_names':

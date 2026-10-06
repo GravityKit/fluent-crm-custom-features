@@ -177,6 +177,7 @@ add_action(
 
 			// Always on: it only acts while internal-only mode lists domains.
 			\CustomCRM\AbandonCart\Edd\CartEmailGuard::register();
+			\CustomCRM\AbandonCart\Edd\CartEmailStop::register();
 
 			if ( is_admin() ) {
 				( new \CustomCRM\AbandonCart\Edd\DiscountSettingsPage() )->register();

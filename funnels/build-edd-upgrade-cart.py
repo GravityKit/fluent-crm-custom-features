@@ -28,7 +28,7 @@ EXTRAS = "{{" + G + ".new_plan_extras}}"
 REFUNDS = "https://www.gravitykit.com/refund-policy/"
 
 
-from email_blocks import button, greeting, header, para, raw, signature
+from email_blocks import button, greeting, header, para, raw, signature, stop_line
 
 SIGN = signature(["Zack Katz", "Founder, GravityKit"])
 CALL = "https://www.gravitykit.com/consultation/"
@@ -141,7 +141,7 @@ for title, amount, unit, subject, preheader, body, utm in EMAILS:
                 "title": title,
                 "email_subject": subject,
                 "email_pre_header": preheader,
-                "email_body": body,
+                "email_body": body + stop_line("##" + G + ".stop_url##"),
                 "design_template": "simple",
                 "utm_status": 1,
                 "utm_source": "fluentcrm",

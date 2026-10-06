@@ -94,7 +94,7 @@ class EddCartDriver extends AbstractCartDriver {
 	 * @param AbandonCartModel $cart
 	 */
 	public function isWithinCoolOffPeriod( AbandonCartModel $cart ) {
-		return AllowedDomains::holdBack( $cart ) || $this->boughtRecently( $cart ) || $this->sentRecently( $cart );
+		return AllowedDomains::holdBack( $cart ) || CartEmailStop::holdBack( $cart ) || $this->boughtRecently( $cart ) || $this->sentRecently( $cart );
 	}
 
 	/**
