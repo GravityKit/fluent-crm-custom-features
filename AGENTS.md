@@ -57,3 +57,10 @@ Deleting the old `fc_funnel_subscribers` run is not enough. FluentCRM skips any 
 - **Ask, don't order.** When the email asks the reader to do something for us, say please: "If someone else approves purchases, please forward them this email." Offers of help stay as written ("just reply and we'll sort it out").
 - A subject capitalizes the word after a colon: "Last reminder: You were about to upgrade to …".
 - An email that may be forwarded opens by saying what was left unfinished, so a reader with no context knows what it is about.
+- Open with "Hi {first name}", never "Hey". No em dashes, in subjects, preheaders or body; use a colon or a new sentence.
+- Write to what the shopper is trying to get done, not a feature list ("toolbox of add-ons", "drag-and-drop" were cut). The new-purchase emails follow the Hidden Multipliers buyer research: someone asked for something the entries list can't produce, she values building it without a developer, and what stops her is doubting it fits her case.
+- Anything that must not wrap away from its words (an emoji at the end of a sentence) goes behind `&nbsp;`.
+
+## Email markup (FluentCRM)
+
+- **FluentCRM rebuilds block styles when it sends, so check sizes and spacing in a real send, not in the builder output.** A paragraph's `"fontSize":"small"` preset renders as `font-size: var(--wp--preset--font-size--small)`, which no email defines, so the text stays at the 16px body size; set `"style":{"typography":{"fontSize":"14px"}}` instead. The template also forces `margin-bottom` with `!important` on every `p` (14px) and on unclassed top-level `div`s (10px), so spacing you need exactly goes in a `raw()` block with a classed `div`. Measure in a browser against the Mailpit copy (`getBoundingClientRect`, and CDP `CSS.getMatchedStylesForNode` to find which rule wins).
