@@ -95,7 +95,7 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	 * @param AbandonCartModel $cart
 	 */
 	public function isWithinCoolOffPeriod( AbandonCartModel $cart ) {
-		if ( AllowedDomains::holdBack( $cart ) ) {
+		if ( AllowedDomains::holdBack( $cart ) || CartEmailStop::holdBack( $cart ) ) {
 			return true;
 		}
 
