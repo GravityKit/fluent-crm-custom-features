@@ -40,6 +40,23 @@ class CartEmailStop {
 	 * Hooks the link's page.
 	 */
 	public static function register(): void {
+		// A REST route, because the CDN caches 200 responses on the home URL whatever headers WordPress
+		// sends, and admin-post.php prints other plugins' admin notices above the page. Links sent
+		// before 2026-10-06 point at the home URL, so that handler stays.
+		add_action(
+			'rest_api_init',
+			function () {
+				register_rest_route(
+					'gk-cart/v1',
+					'/stop',
+					[
+						'methods'             => [ 'GET', 'POST' ],
+						'callback'            => [ self::class, 'handleRequest' ],
+						'permission_callback' => '__return_true',
+					]
+				);
+			}
+		);
 		add_action( 'template_redirect', [ self::class, 'handleRequest' ], 0 );
 	}
 
@@ -58,7 +75,7 @@ class CartEmailStop {
 				self::QUERY_ARG => (int) $cart->id,
 				'key'           => self::key( $cart ),
 			],
-			home_url( '/' )
+			rest_url( 'gk-cart/v1/stop' )
 		);
 	}
 
