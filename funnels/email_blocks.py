@@ -83,6 +83,6 @@ def stop_line(href):
     `div` (`!important`), and its body already pads the bottom, so either leaves a gap above the footer.
     """
     return raw(
-        '<div class="gk-cart-stop" style="margin:24px 0 0;text-align:center;color:#4b5563;font-size:14px;line-height:1.5;">'
+        '<div class="gk-cart-stop" style="margin:0;text-align:center;color:#4b5563;font-size:14px;line-height:1.5;">'
         'Don’t want these reminders? <a href="' + href + '">Stop these emails</a>.</div>'
     )
