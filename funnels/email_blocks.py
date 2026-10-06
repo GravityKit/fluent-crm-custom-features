@@ -79,8 +79,8 @@ def signature(lines):
 def stop_line(href):
     """Small last line linking to the cart's "Stop these emails" page (not the full unsubscribe)."""
     return (
-        '<!-- wp:paragraph {"style":{"color":{"text":"#6b7280"},"typography":{"fontSize":"14px"}}} -->\n'
-        '<p class="has-text-color" style="color:#6b7280;font-size:14px">'
+        '<!-- wp:paragraph {"style":{"color":{"text":"#4b5563"},"typography":{"fontSize":"14px"}}} -->\n'
+        '<p class="has-text-color" style="color:#4b5563;font-size:14px">'
         'Don’t want these reminders? <a href="' + href + '">Stop these emails</a>.</p>\n'
         "<!-- /wp:paragraph -->\n\n"
     )
