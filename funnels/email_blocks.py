@@ -79,11 +79,11 @@ def signature(lines):
 def stop_line(href):
     """Last line, below a light rule, linking to the cart's "Stop these emails" page (not the full unsubscribe).
 
-    Raw HTML, because FluentCRM rebuilds paragraph and separator blocks with its own margins. The
-    template already pads the bottom of the body, so the line itself has no bottom margin.
+    Raw HTML and a div: FluentCRM's template forces `p { margin: 0 0 14px !important }`, and its body
+    already pads the bottom, so a paragraph here leaves a 43px gap above the footer.
     """
     return raw(
         '<hr style="border:0;border-top:1px solid #e5e7eb;margin:24px 0 14px;">'
-        '<p style="margin:0;text-align:center;color:#4b5563;font-size:14px;line-height:1.5;">'
-        'Don’t want these reminders? <a href="' + href + '">Stop these emails</a>.</p>'
+        '<div style="margin:0;text-align:center;color:#4b5563;font-size:14px;line-height:1.5;">'
+        'Don’t want these reminders? <a href="' + href + '">Stop these emails</a>.</div>'
     )
