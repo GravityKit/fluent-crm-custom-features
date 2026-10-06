@@ -44,6 +44,7 @@ EMAILS = [
                "share. You build it yourself, without hiring a developer.")
         + para("Not sure it does what you need? Reply and let me know. I’ll give you honest feedback about whether "
                "GravityKit is the right fit.")
+        + para("<strong>Need an invoice, a quote, or a W-9 to get this approved?</strong> Reply and we’ll send it.")
         + para('<a href="' + URL + '">Go back and complete your purchase.</a>')
         + SIGN
         + para("P.S. Not sure which plugins you need? "
@@ -69,6 +70,7 @@ EMAILS = [
             '<strong>Talk it through with me.</strong> <a href="' + CALL + '">Book a free 1-on-1 call</a> and '
             "we’ll work it out together.",
         ])
+        + para("<strong>Need an invoice, a quote, or a W-9 to get this approved?</strong> Reply and we’ll send it.")
         # Hidden Multipliers: the cost of waiting is the inciting event that has not gone away.
         + para("Every week you wait is another week of copying entries into spreadsheets, sending people the "
                "latest list by hand, and logging in to the WordPress dashboard to find the one entry someone "
