@@ -1024,7 +1024,7 @@ class EddCartTracking {
 
 		if ( ! $record || 'processing' !== $record->status ) {
 			do_action( 'fluent_crm/ab_cart_restore_failed', $record );
-			wp_safe_redirect( edd_get_checkout_uri() );
+			wp_safe_redirect( self::emailCheckoutUrl( $record ) );
 			exit;
 		}
 
@@ -1113,8 +1113,31 @@ class EddCartTracking {
 
 		$this->setCookie( $record->checkout_key );
 
-		wp_safe_redirect( edd_get_checkout_uri() );
+		wp_safe_redirect( self::emailCheckoutUrl( $record ) );
 		exit;
+	}
+
+	/**
+	 * Checkout URL tagged so analytics can tie the visit, and any purchase, to the recovery email.
+	 *
+	 * The tags go on the redirect target because the recovery link itself only redirects, so no
+	 * analytics script ever loads on it. `fc_ab_cart` is the cart's row ID, never its checkout key.
+	 *
+	 * @param AbandonCartModel|null $record Null when the link no longer matches an open cart.
+	 */
+	public static function emailCheckoutUrl( $record = null ): string {
+		$args = [
+			'utm_source'   => 'fluentcrm',
+			'utm_medium'   => 'email',
+			'utm_campaign' => 'cart-recovery',
+		];
+
+		if ( $record ) {
+			$args['utm_content'] = (string) $record->provider;
+			$args['fc_ab_cart']  = (int) $record->id;
+		}
+
+		return add_query_arg( $args, edd_get_checkout_uri() );
 	}
 
 	/**
