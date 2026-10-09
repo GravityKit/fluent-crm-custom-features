@@ -94,7 +94,7 @@ class EddCartTracking {
 						} catch ( \Throwable $e ) {
 							self::$restoring = false;
 							self::logError( 'restoreCart', $e );
-							wp_safe_redirect( edd_get_checkout_uri() );
+							wp_safe_redirect( self::emailCheckoutUrl( null, (array) $data ) );
 							exit;
 						}
 					},
@@ -1024,7 +1024,7 @@ class EddCartTracking {
 
 		if ( ! $record || 'processing' !== $record->status ) {
 			do_action( 'fluent_crm/ab_cart_restore_failed', $record );
-			wp_safe_redirect( self::emailCheckoutUrl( $record ) );
+			wp_safe_redirect( self::emailCheckoutUrl( $record, (array) $data ) );
 			exit;
 		}
 
@@ -1113,19 +1113,20 @@ class EddCartTracking {
 
 		$this->setCookie( $record->checkout_key );
 
-		wp_safe_redirect( self::emailCheckoutUrl( $record ) );
+		wp_safe_redirect( self::emailCheckoutUrl( $record, (array) $data ) );
 		exit;
 	}
 
 	/**
-	 * Checkout URL tagged so analytics can tie the visit, and any purchase, to the recovery email.
+	 * Checkout URL with the email's UTM tags, so analytics credits the visit to that email.
 	 *
-	 * The tags go on the redirect target because the recovery link itself only redirects, so no
-	 * analytics script ever loads on it. `fc_ab_cart` is the cart's row ID, never its checkout key.
+	 * No analytics script loads on the recovery link, which only redirects, so its `utm_*` are
+	 * copied onto checkout; defaults fill only missing tags. `fc_ab_cart` is the cart row ID, never its key.
 	 *
-	 * @param AbandonCartModel|null $record Null when the link no longer matches an open cart.
+	 * @param AbandonCartModel|null $record   Null when the link no longer matches an open cart.
+	 * @param array<string,mixed>   $incoming Query vars of the recovery link.
 	 */
-	public static function emailCheckoutUrl( $record = null ): string {
+	public static function emailCheckoutUrl( $record = null, array $incoming = [] ): string {
 		$args = [
 			'utm_source'   => 'fluentcrm',
 			'utm_medium'   => 'email',
@@ -1137,7 +1138,16 @@ class EddCartTracking {
 			$args['fc_ab_cart']  = (int) $record->id;
 		}
 
-		return add_query_arg( $args, edd_get_checkout_uri() );
+		// FluentCRM's router may not pass unknown query vars through, so read the request too.
+		$sources = array_merge( wp_unslash( $_GET ), $incoming ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		foreach ( [ 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_id' ] as $key ) {
+			$value = isset( $sources[ $key ] ) && is_scalar( $sources[ $key ] ) ? sanitize_text_field( (string) $sources[ $key ] ) : '';
+			if ( '' !== $value ) {
+				$args[ $key ] = substr( $value, 0, 100 );
+			}
+		}
+
+		return add_query_arg( array_map( 'rawurlencode', $args ), edd_get_checkout_uri() );
 	}
 
 	/**

@@ -841,10 +841,14 @@ class EddUpgradeCartDriver extends EddCartDriver {
 	/**
 	 * A bullet list of what the new plan adds.
 	 *
+	 * - The same product on another price option: the new option in place of the current one, plus
+	 *   a no-renewals line when the new option is lifetime.
 	 * - A bundle: its products the current license does not cover.
-	 * - An All Access pass: every GravityKit plugin.
-	 * - The same product on a bigger price option: the new option in place of the current one.
+	 * - A pass covering every category: every GravityKit plugin.
 	 * - Anything else: the new product with updates and support.
+	 *
+	 * Same product comes first: GravityView Pro and Core are EDD All Access products too, but
+	 * cover only their own categories, so "is all access" alone does not mean every plugin.
 	 *
 	 * Filter the list with `customcrm/edd_ab_cart/upgrade_plan_extras`.
 	 *
@@ -856,9 +860,22 @@ class EddUpgradeCartDriver extends EddCartDriver {
 		$current_download = (int) $license->download_id;
 		$extras           = [];
 
-		$is_all_access = function_exists( 'edd_all_access_download_is_all_access' ) && edd_all_access_download_is_all_access( $new_download );
+		$is_same_product  = $new_download === $current_download && null !== $new_price_id;
+		$covers_every_one = self::coversEveryProduct( $new_download );
 
-		if ( edd_is_bundled_product( $new_download ) ) {
+		if ( $is_same_product ) {
+			$extras[] = sprintf(
+				/* translators: 1: new price option, 2: current price option */
+				esc_html__( '%1$s, instead of %2$s', 'fluent-crm-custom-features' ),
+				esc_html( (string) edd_get_price_option_name( $new_download, $new_price_id ) ),
+				esc_html( (string) edd_get_price_option_name( $current_download, $license->price_id ) )
+			);
+
+			$becomes_lifetime = 'lifetime' === edd_sl_get_product_license_length( $new_download, $new_price_id ) && ! $license->is_lifetime;
+			if ( $becomes_lifetime ) {
+				$extras[] = esc_html__( 'Updates and support for life, with no more renewals', 'fluent-crm-custom-features' );
+			}
+		} elseif ( edd_is_bundled_product( $new_download ) ) {
 			$covered = array_merge( [ $current_download ], self::bundledIds( $current_download, $license->price_id ) );
 
 			foreach ( self::bundledIds( $new_download, $new_price_id ) as $product_id ) {
@@ -866,16 +883,9 @@ class EddUpgradeCartDriver extends EddCartDriver {
 					$extras[] = self::planName( $product_id, null );
 				}
 			}
-		} elseif ( $is_all_access ) {
+		} elseif ( $covers_every_one ) {
 			// Falls through to the "every GravityKit plugin" line below.
 			$extras = [];
-		} elseif ( $new_download === $current_download && null !== $new_price_id ) {
-			$extras[] = sprintf(
-				/* translators: 1: new price option, 2: current price option */
-				esc_html__( '%1$s, instead of %2$s', 'fluent-crm-custom-features' ),
-				esc_html( (string) edd_get_price_option_name( $new_download, $new_price_id ) ),
-				esc_html( (string) edd_get_price_option_name( $current_download, $license->price_id ) )
-			);
 		} else {
 			/* translators: %s: product name */
 			$extras[] = sprintf( esc_html__( 'Everything in %s, with all updates and support', 'fluent-crm-custom-features' ), self::planName( $new_download, null ) );
@@ -888,6 +898,24 @@ class EddUpgradeCartDriver extends EddCartDriver {
 		$extras = (array) apply_filters( 'customcrm/edd_ab_cart/upgrade_plan_extras', $extras, $license, $new_download, $new_price_id );
 
 		return '<ul class="customcrm-upgrade-extras"><li>' . implode( '</li><li>', $extras ) . '</li></ul>';
+	}
+
+	/**
+	 * Whether a download is an All Access pass for every category, as the All Access Pass is.
+	 *
+	 * @param int $download_id
+	 */
+	private static function coversEveryProduct( int $download_id ): bool {
+		$is_all_access = function_exists( 'edd_all_access_download_is_all_access' ) && edd_all_access_download_is_all_access( $download_id );
+
+		if ( ! $is_all_access ) {
+			return false;
+		}
+
+		$settings   = (array) get_post_meta( $download_id, '_edd_all_access_settings', true );
+		$categories = (array) ( $settings['all_access_categories'] ?? [] );
+
+		return in_array( 'all', $categories, true );
 	}
 
 	/**
