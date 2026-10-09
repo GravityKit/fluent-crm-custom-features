@@ -9,6 +9,8 @@ Team-facing overview (what the flows send, who is held back, how to change copy)
 - Pushing PHP or `assets/` to `main` deploys to production (`.github/workflows/deploy.yml`). Funnel JSON and Python builders do not deploy; they are imported by hand.
 - **Small fixes (a copy tweak, a one-line change) go straight to `main`**, then fast-forward `develop` to `main`. No feature PR or release PR.
 - Bigger changes: a feature branch with a PR into `develop`, then an `Upcoming Release` PR from `develop` into `main`.
+- **For about a minute after a deploy, some live requests still run the old code.** Two checks on 2026-10-08 and 2026-10-09 returned the old redirect first and the new one on retry. Repeat a live check a few times with a fresh query string before calling a deploy broken.
+- **Recovery links keep the email's `utm_*`.** `EddCartTracking::emailCheckoutUrl()` copies them onto the checkout redirect, filling only missing tags with `fluentcrm` / `email` / `cart-recovery`, and adds `utm_content` (cart type) and `fc_ab_cart` (cart row ID). The link itself only redirects, so analytics first loads on checkout.
 
 ## Cart email automations
 
