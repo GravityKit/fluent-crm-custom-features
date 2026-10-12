@@ -28,7 +28,7 @@ EXTRAS = "{{" + G + ".new_plan_extras}}"
 REFUNDS = "https://www.gravitykit.com/refund-policy/"
 
 
-from email_blocks import button, greeting, header, para, raw, signature, stop_line
+from email_blocks import button, greeting, header, para, raw, signature, small_center, stop_line
 
 SIGN = signature(["Zack Katz", "Founder, GravityKit"])
 CALL = "https://www.gravitykit.com/consultation/"
@@ -43,7 +43,7 @@ EMAILS = [
         "Upgrade email 1: Your upgrade is saved",
         60, "minutes",
         "Your upgrade to " + NEW_NAME + " is saved",
-        "Pick up right where you left off.",
+        "You get credit for your current license.",
         header(URL)
         + greeting("Hi " + NAME + ",")
         + para("Looks like you didn’t finish upgrading to " + NEW_NAME + ". It’s saved, so you can pick up where you "
@@ -68,16 +68,17 @@ EMAILS = [
         + raw(EXTRAS)
         + para("Not sure it fits what you’re building? Reply and tell us about your project. We’ll give you a "
                "straight answer, even if the answer is “you don’t need it.”")
-        + para('And upgrades are covered by our <a href="' + REFUNDS + '">30-day money-back guarantee</a>.')
-        + button("See My Upgrade", URL)
+        + button("See My Upgrade", URL, small_center(
+            'Upgrades are covered by our <a href="' + REFUNDS + '">30-day, no-questions-asked money-back guarantee</a>.'))
         + SIGN
-        + para("P.S. " + PS_CALL),
+        + para("P.S. Rather talk it through live? "
+               '<a href="' + CALL + '">Book a free 1-on-1 call with me</a> and we’ll work out what fits.'),
         "upgrade-cart-2",
     ),
     (
         "Upgrade email 3: Run it by someone",
         3, "days",
-        "Last reminder: You were about to upgrade to " + NEW_NAME,
+        "Still want {{" + G + ".new_plan_name|the upgrade}}?",
         "Your upgrade is still saved. Easy to forward to whoever approves purchases.",
         header(URL)
         + greeting("Hi " + NAME + ",")
@@ -90,9 +91,8 @@ EMAILS = [
         + para("If someone else approves purchases, please forward them this email. They can finish the upgrade with the "
                "button below.")
         + button("Finish My Upgrade", URL)
-        # The fallback for a reader who is not ready to buy; it replaces the P.S. the other emails carry.
-        + para("Not ready yet, or have questions first? Just reply to this email, or "
-               '<a href="' + CALL + '">book a free 1-on-1 call with me</a>.')
+        # Whoever approves purchases often needs paperwork first; this takes the place of the P.S. in the other emails.
+        + para("<strong>Need an invoice, a quote, or a W-9 to get this approved?</strong> Reply and we’ll send it.")
         + para("This is the last email we’ll send about this upgrade.")
         + SIGN,
         "upgrade-cart-3",
@@ -141,7 +141,9 @@ for title, amount, unit, subject, preheader, body, utm in EMAILS:
                 "title": title,
                 "email_subject": subject,
                 "email_pre_header": preheader,
-                "email_body": body + stop_line("##" + G + ".stop_url##"),
+                # FluentCRM drops trailing newlines when an email is saved in its editor; matching that keeps
+                # the repo and the live copy byte-identical.
+                "email_body": (body + stop_line("##" + G + ".stop_url##")).rstrip("\n"),
                 "design_template": "simple",
                 "utm_status": 1,
                 "utm_source": "fluentcrm",

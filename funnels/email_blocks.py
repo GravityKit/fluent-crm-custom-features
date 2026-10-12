@@ -20,7 +20,7 @@ def header(href):
         '<!-- wp:image {"lightbox":{"enabled":false},"id":%d,"width":"200px","sizeSlug":"full",'
         '"linkDestination":"custom","align":"center"} -->\n'
         '<figure class="wp-block-image aligncenter size-full is-resized"><a href="%s">'
-        '<img src="%s" alt="GravityKit" class="wp-image-%d" style="width:200px"/></a></figure>\n'
+        '<img src="%s" alt="GravityKit" class="wp-image-%d" style="width:200px;height:auto"/></a></figure>\n'
         "<!-- /wp:image --></div>\n"
         "<!-- /wp:group -->\n\n" % (LOGO_ID, html.escape(href, quote=True), LOGO_URL, LOGO_ID)
     )
@@ -39,11 +39,32 @@ def para(text):
     return "<!-- wp:paragraph -->\n<p>" + text + "</p>\n<!-- /wp:paragraph -->\n\n"
 
 
-def bullets(items):
+def bullets(items, ordered=False):
     inner = "".join(
         "<!-- wp:list-item -->\n<li>" + item + "</li>\n<!-- /wp:list-item -->\n\n" for item in items
     ).rstrip("\n")
+    if ordered:
+        return '<!-- wp:list {"ordered":true} -->\n<ol class="wp-block-list">' + inner + "</ol>\n<!-- /wp:list -->\n\n"
     return '<!-- wp:list -->\n<ul class="wp-block-list">' + inner + "</ul>\n<!-- /wp:list -->\n\n"
+
+
+def small_center(text):
+    """A small centered line, such as the guarantee under a button."""
+    return (
+        '<!-- wp:paragraph {"fontSize":"fc-small","style":{"typography":{"textAlign":"center"}}} -->\n'
+        '<p class="has-text-align-center has-fc-small-font-size">' + text + "</p>\n"
+        "<!-- /wp:paragraph -->\n\n"
+    )
+
+
+def quote(text, cite):
+    """A customer quote in italics, with who said it in small type below."""
+    return (
+        '<!-- wp:quote -->\n<blockquote class="wp-block-quote"><!-- wp:paragraph {"fontSize":"fc-regular"} -->\n'
+        '<p class="has-fc-regular-font-size"><em>' + text + "</em></p>\n<!-- /wp:paragraph -->\n\n"
+        '<!-- wp:paragraph {"fontSize":"fc-small"} -->\n<p class="has-fc-small-font-size">' + cite + "</p>\n"
+        "<!-- /wp:paragraph --></blockquote>\n<!-- /wp:quote -->\n\n"
+    )
 
 
 def spacer(height=10):
@@ -54,8 +75,9 @@ def spacer(height=10):
     )
 
 
-def button(label, href):
-    """A centered button, framed by spacers, as in the onboarding emails."""
+def button(label, href, note=""):
+    """A centered button, framed by spacers, as in the onboarding emails. `note` is block markup placed
+    directly under the button, inside the spacers, such as the guarantee line."""
     return (
         spacer()
         + '<!-- wp:buttons {"layout":{"type":"flex","justifyContent":"center"}} -->\n'
@@ -64,6 +86,7 @@ def button(label, href):
         + html.escape(href, quote=True) + '" style="background-color:' + BUTTON_COLOR + '">' + label + "</a></div>\n"
         "<!-- /wp:button --></div>\n"
         "<!-- /wp:buttons -->\n\n"
+        + note
         + spacer()
     )
 

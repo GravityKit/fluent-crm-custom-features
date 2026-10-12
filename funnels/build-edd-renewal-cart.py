@@ -22,7 +22,7 @@ ACCOUNT = "https://www.gravitykit.com/account/"
 
 from email_blocks import bullets, button, greeting, header, para, raw, signature, stop_line
 
-SIGN = signature(["All the best,", "The GravityKit team"])
+SIGN = signature(["–The GravityKit team"])
 
 
 # The first wait follows the "capture after" minutes in Abandoned Cart settings (30), so email 1
@@ -32,7 +32,7 @@ EMAILS = [
         "Renewal email 1: Finish renewing",
         30, "minutes",
         "Your GravityKit renewal is waiting",
-        "Your license " + STATUS + ".",
+        "Renew to keep updates and support coming.",
         header(URL)
         + greeting("Hi " + NAME + ",")
         + para("You started renewing your license for " + PRODUCTS + " but didn’t finish checking out. "
@@ -61,6 +61,7 @@ EMAILS = [
         + para("Your renewal for " + PRODUCTS + " is still waiting at checkout. Your license " + STATUS + ".")
         + button("Renew My License", URL)
         + para('You can see every license and when it expires on your <a href="' + ACCOUNT + '">Account page</a>.')
+        + para("<strong>Need an invoice, a quote, or a W-9 to get this approved?</strong> Reply and we’ll send it.")
         + para("If you’ve decided not to renew, we’d like to know why. Reply to this email; we read every reply.")
         + SIGN,
         "renewal-cart-2",
@@ -109,7 +110,9 @@ for title, amount, unit, subject, preheader, body, utm in EMAILS:
                 "title": title,
                 "email_subject": subject,
                 "email_pre_header": preheader,
-                "email_body": body + stop_line("##" + G + ".stop_url##"),
+                # FluentCRM drops trailing newlines when an email is saved in its editor; matching that keeps
+                # the repo and the live copy byte-identical.
+                "email_body": (body + stop_line("##" + G + ".stop_url##")).rstrip("\n"),
                 "design_template": "simple",
                 "utm_status": 1,
                 "utm_source": "fluentcrm",
