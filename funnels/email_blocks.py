@@ -11,17 +11,18 @@ LOGO_ID = 881668
 BUTTON_COLOR = "#1877f2"
 
 
-def header():
-    """The logo on the brand-color band, as the onboarding emails open."""
+def header(href):
+    """The logo on the brand-color band, as the onboarding emails open. The logo links to `href`,
+    the cart's recovery link, so a click on it lands back in the cart rather than on the homepage."""
     return (
         '<!-- wp:group {"backgroundColor":"primary","layout":{"type":"constrained"}} -->\n'
         '<div class="wp-block-group has-primary-background-color has-background">'
         '<!-- wp:image {"lightbox":{"enabled":false},"id":%d,"width":"200px","sizeSlug":"full",'
         '"linkDestination":"custom","align":"center"} -->\n'
-        '<figure class="wp-block-image aligncenter size-full is-resized"><a href="https://www.gravitykit.com">'
+        '<figure class="wp-block-image aligncenter size-full is-resized"><a href="%s">'
         '<img src="%s" alt="GravityKit" class="wp-image-%d" style="width:200px"/></a></figure>\n'
         "<!-- /wp:image --></div>\n"
-        "<!-- /wp:group -->\n\n" % (LOGO_ID, LOGO_URL, LOGO_ID)
+        "<!-- /wp:group -->\n\n" % (LOGO_ID, html.escape(href, quote=True), LOGO_URL, LOGO_ID)
     )
 
 

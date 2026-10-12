@@ -44,7 +44,7 @@ EMAILS = [
         60, "minutes",
         "Your upgrade to " + NEW_NAME + " is saved",
         "Pick up right where you left off.",
-        header()
+        header(URL)
         + greeting("Hi " + NAME + ",")
         + para("Looks like you didn’t finish upgrading to " + NEW_NAME + ". It’s saved, so you can pick up where you "
                "left off:")
@@ -61,7 +61,7 @@ EMAILS = [
         2, "days",
         "Is " + NEW_NAME + " right for you?",
         "A quick question about your upgrade.",
-        header()
+        header(URL)
         + greeting("Hi " + NAME + ",")
         + para("You started upgrading to " + NEW_NAME + " but didn’t finish. Here’s what it adds to your "
                + CURRENT_PRODUCT + " license:")
@@ -79,7 +79,7 @@ EMAILS = [
         3, "days",
         "Last reminder: You were about to upgrade to " + NEW_NAME,
         "Your upgrade is still saved. Easy to forward to whoever approves purchases.",
-        header()
+        header(URL)
         + greeting("Hi " + NAME + ",")
         # The email may be forwarded to whoever approves purchases, so it opens by saying what was left unfinished.
         + para("A few days ago, you started upgrading your " + CURRENT_PRODUCT + " license to " + NEW_NAME
