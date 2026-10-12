@@ -1278,7 +1278,7 @@ katz.co",
 		'Is a GravityImport plan with more sites right for you?' === $rendered[1]['subject'],
 		false !== strpos( $rendered[0]['body'], 'Looks like you didn’t finish upgrading to a GravityImport plan with more sites. It’s saved' ),
 		false !== strpos( $rendered[0]['body'], 'You get credit for your current GravityImport license, so the upgrade is just ' . $fmt( $today ) . ' today.' ),
-		'Last reminder: You were about to upgrade to a GravityImport plan with more sites' === $rendered[2]['subject'],
+		'Still want a GravityImport plan with more sites?' === $rendered[2]['subject'],
 		false !== strpos( $rendered[1]['body'], 'You started upgrading to a GravityImport plan with more sites but didn’t finish. Here’s what it adds to your GravityImport license:' ),
 		false !== strpos( $rendered[2]['body'], 'A few days ago, you started upgrading your GravityImport license to a GravityImport plan with more sites but didn’t finish checking out. Your upgrade is still saved.' ),
 		false !== strpos( $rendered[2]['body'], 'Upgrading is ' . $fmt( $today ) . ' today, with credit for your current GravityImport license.' ),
@@ -1289,7 +1289,7 @@ katz.co",
 		'Is All Access Pass right for you?' === $rendered_aa[1]['subject'],
 		false !== strpos( $rendered_aa[0]['body'], 'Looks like you didn’t finish upgrading to All Access Pass. It’s saved' ),
 		false !== strpos( $rendered_aa[0]['body'], 'You get credit for your current GravityImport license, so the upgrade is just ' ),
-		'Last reminder: You were about to upgrade to All Access Pass' === $rendered_aa[2]['subject'],
+		'Still want All Access Pass?' === $rendered_aa[2]['subject'],
 		false !== strpos( $rendered_aa[1]['body'], 'You started upgrading to All Access Pass but didn’t finish. Here’s what it adds to your GravityImport license:' ),
 		false !== strpos( $rendered_aa[2]['body'], 'A few days ago, you started upgrading your GravityImport license to All Access Pass but didn’t finish checking out.' ),
 		false !== strpos( $rendered_aa[2]['body'], 'Upgrading is ' ) && false !== strpos( $rendered_aa[2]['body'], ' today, with credit for your current GravityImport license.' ),
@@ -1309,9 +1309,9 @@ katz.co",
 		substr( $email1_text, 0, 700 )
 	);
 	t402_check( 'render: email 1 has no breakdown lines', false === strpos( $email1_text, 'You pay today' ) && false === strpos( $email1_text, 'Credit for' ) && false === strpos( $email1_text, ' until ' ), substr( $email1_text, 0, 700 ) );
-	t402_check( 'render: email 2 lists what the new plan adds and the money-back guarantee', false !== strpos( $rendered[1]['body'], 'Up to 3 Sites, instead of Single Site' ) && false !== strpos( $rendered[1]['body'], '30-day money-back guarantee' ) );
+	t402_check( 'render: email 2 lists what the new plan adds and the money-back guarantee', false !== strpos( $rendered[1]['body'], 'Up to 3 Sites, instead of Single Site' ) && false !== strpos( $rendered[1]['body'], '30-day, no-questions-asked money-back guarantee' ) );
 	t402_check( 'render: email 3 gives today\'s price for an approver', false !== strpos( $rendered[2]['body'], 'is ' . $fmt( $today ) . ' today, with credit for your current' ) && false !== strpos( $rendered[2]['body'], 'If someone else approves purchases, please forward them this email.' ) && false !== strpos( $rendered[2]['body'], 'This is the last email we’ll send about this upgrade.' )
-		&& false !== strpos( $rendered[2]['body'], 'Not ready yet, or have questions first? Just reply to this email, or ' ) && false === strpos( $rendered[2]['body'], 'P.S.' ) );
+		&& false !== strpos( $rendered[2]['body'], 'Need an invoice, a quote, or a W-9 to get this approved?' ) && false === strpos( $rendered[2]['body'], 'P.S.' ) );
 	t402_check( 'render: email 3 has no renews-soon sentence and no empty paragraph 200 days out', false === strpos( $rendered[2]['body'], 'Your license renews on' ) && 0 === $empty_paragraphs( $rendered[2]['body'] ), [ 'empty_p' => $empty_paragraphs( $rendered[2]['body'] ) ] );
 	t402_check( 'render: email 3 has the renews-soon paragraph when the license renews within 30 days', false !== strpos( $email3_soon, '<p>Your license renews on ' . date_i18n( $date_fmt, $render_soon_date ) . '. If you’d rather upgrade then, just reply and we’ll set it up.</p>' ) && 0 === $empty_paragraphs( $email3_soon ) );
 	t402_check( 'render: no empty paragraph in any of the 3 emails', 0 === array_sum( array_map( function ( $r ) use ( $empty_paragraphs ) { return $empty_paragraphs( $r['body'] ); }, $rendered ) ) );

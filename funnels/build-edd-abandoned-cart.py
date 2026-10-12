@@ -13,15 +13,16 @@ G = "ab_cart_edd"
 NAME = "{{contact.first_name|there}}"
 CART = "{{" + G + ".cart_items_table}}"
 URL = "##" + G + ".recovery_url##"
-PRODUCTS = "{{" + G + ".product_names}}"
+PRODUCTS = "{{" + G + ".product_names|everything you picked}}"
 CODE = "{{" + G + ".recovery_discount_code}}"
 AMOUNT = "{{" + G + ".recovery_discount_amount}}"
 
 
-from email_blocks import bullets, button, greeting, header, para, raw, signature, stop_line
+from email_blocks import bullets, button, greeting, header, para, quote, raw, signature, small_center, stop_line
 
 SIGN = signature(["Zack Katz", "Founder, GravityKit"])
 CALL = "https://www.gravitykit.com/consultation/"
+GUARANTEE = small_center("Every purchase comes with a 30-day, no-questions-asked money-back guarantee.")
 
 
 # Each email: (title, wait amount, wait unit, subject, preheader, body, utm_campaign)
@@ -33,24 +34,15 @@ EMAILS = [
         "Everything you picked is still in your cart\u00a0🛒",
         header(URL)
         + greeting("Hi " + NAME + ",")
-        + para("Did you forget to check out? Your cart is saved, so you can pick up right where you left off.&nbsp;🛒")
+        + para("Did you forget to check out? Your cart is saved, so you can pick up right where you left off.")
         + para("Here is what you left in your cart:")
         + raw(CART)
-        + button("Return and Complete Purchase", URL)
-        # Written for Carol (Marketing/Hidden Multipliers): someone asks her for something the entries
-        # list can't produce, she values building it without a developer, and she doubts it fits her case.
-        + para("A refresher: GravityKit turns your Gravity Forms entries into the things people keep asking you "
-               "for. A member directory. A dashboard your team can log in to. A report your boss can open and "
-               "share. You build it yourself, without hiring a developer.")
-        + para("Not sure it does what you need? Reply and let me know. I’ll give you honest feedback about whether "
+        + button("Return and Complete Purchase", URL, GUARANTEE)
+        + para("Not sure it does what you need? Reply and tell me what you’re building, and I’ll tell you whether "
                "GravityKit is the right fit.")
         + para("<strong>Need an invoice, a quote, or a W-9 to get this approved?</strong> Reply and we’ll send it.")
         + para('<a href="' + URL + '">Go back and complete your purchase.</a>')
-        + SIGN
-        + para("P.S. Not sure which plugins you need? "
-               '<a href="' + CALL + '">Book a free 1-on-1 call with me</a> and we’ll work it out together.')
-        + para("P.P.S. Every purchase comes with a 30-day guarantee: if GravityKit doesn’t do what you need, tell "
-               "us within 30 days of buying and we’ll refund you in full."),
+        + SIGN,
         "abandoned-cart-1",
     ),
     (
@@ -63,22 +55,22 @@ EMAILS = [
         + para("You still have " + PRODUCTS + " in your cart.")
         + para("If you’re not sure GravityKit will do what you need, here are three ways to find out before you pay:")
         + bullets([
-            '<strong><a href="https://site.try.gravitykit.com/">Try it on a live demo site.</a></strong> '
-            "Build with real form entries, nothing to install.",
+            '<strong><a href="https://demo.gravitykit.com/">Try it in your own private demo.</a></strong> '
+            "Pick the plugin you’re buying and build with real form entries, nothing to install.",
             "<strong>Let me know.</strong> Reply to this email and I’ll tell you whether it fits and which plugins "
             "you need.",
             '<strong>Talk it through with me.</strong> <a href="' + CALL + '">Book a free 1-on-1 call</a> and '
             "we’ll work it out together.",
-        ])
-        + para("<strong>Need an invoice, a quote, or a W-9 to get this approved?</strong> Reply and we’ll send it.")
+        ], ordered=True)
         # Hidden Multipliers: the cost of waiting is the inciting event that has not gone away.
         + para("Every week you wait is another week of copying entries into spreadsheets, sending people the "
                "latest list by hand, and logging in to the WordPress dashboard to find the one entry someone "
                "asked about.")
-        + button("Go Back and Complete Your Purchase", URL)
-        + SIGN
-        + para("P.S. Every purchase comes with a 30-day guarantee: if GravityKit doesn’t do what you need, tell "
-               "us within 30 days of buying and we’ll refund you in full."),
+        + quote("“We were able to quickly build the directory we’d been trying to design for years. For a very "
+                "reasonable investment we saved hundreds of hours of time.”",
+                "–Tony Jenkins, PhD, Global Campaign for Peace Education")
+        + button("Go Back and Complete Your Purchase", URL, GUARANTEE)
+        + SIGN,
         "abandoned-cart-2",
     ),
     (
@@ -89,10 +81,10 @@ EMAILS = [
         header(URL)
         + greeting("Hi " + NAME + ",")
         + para("If price is what’s holding you back, here’s " + AMOUNT + " off the items in your cart. Use code "
-               "<strong>" + CODE + "</strong> at checkout, or use the button below and it’s already applied. "
+               "<strong>" + CODE + "</strong> at checkout, or click the button below and it’s already applied. "
                "It’s valid for the next 48 hours.")
         + raw(CART)
-        + button("Complete Purchase and Save " + AMOUNT, URL)
+        + button("Complete Purchase and Save " + AMOUNT, URL, GUARANTEE)
         + SIGN
         + para("P.S. Not sure which plugins you need? "
                '<a href="' + CALL + '">Book a free 1-on-1 call with me</a> and we’ll work it out together.'),
@@ -142,7 +134,9 @@ for title, amount, unit, subject, preheader, body, utm in EMAILS:
                 "title": title,
                 "email_subject": subject,
                 "email_pre_header": preheader,
-                "email_body": body + stop_line("##" + G + ".stop_url##"),
+                # FluentCRM drops trailing newlines when an email is saved in its editor; matching that keeps
+                # the repo and the live copy byte-identical.
+                "email_body": (body + stop_line("##" + G + ".stop_url##")).rstrip("\n"),
                 "design_template": "simple",
                 "utm_status": 1,
                 "utm_source": "fluentcrm",
