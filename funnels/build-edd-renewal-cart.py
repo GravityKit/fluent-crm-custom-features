@@ -33,7 +33,7 @@ EMAILS = [
         30, "minutes",
         "Your GravityKit renewal is waiting",
         "Your license " + STATUS + ".",
-        header()
+        header(URL)
         + greeting("Hi " + NAME + ",")
         + para("You started renewing your license for " + PRODUCTS + " but didn’t finish checking out. "
                "Your license " + STATUS + ".")
@@ -56,7 +56,7 @@ EMAILS = [
         2, "days",
         "Still planning to renew?",
         "Your renewal is still at checkout.",
-        header()
+        header(URL)
         + greeting("Hi " + NAME + ",")
         + para("Your renewal for " + PRODUCTS + " is still waiting at checkout. Your license " + STATUS + ".")
         + button("Renew My License", URL)
