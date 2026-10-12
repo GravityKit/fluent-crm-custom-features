@@ -31,7 +31,7 @@ EMAILS = [
         15, "minutes",
         "Complete your purchase: your website will thank you!",
         "Everything you picked is still in your cart\u00a0🛒",
-        header()
+        header(URL)
         + greeting("Hi " + NAME + ",")
         + para("Did you forget to check out? Your cart is saved, so you can pick up right where you left off.&nbsp;🛒")
         + para("Here is what you left in your cart:")
@@ -58,7 +58,7 @@ EMAILS = [
         1425, "minutes",
         "Will GravityKit do what you need?",
         "Try it on a live demo before you buy.",
-        header()
+        header(URL)
         + greeting("Hi " + NAME + ",")
         + para("You still have " + PRODUCTS + " in your cart.")
         + para("If you’re not sure GravityKit will do what you need, here are three ways to find out before you pay:")
@@ -86,7 +86,7 @@ EMAILS = [
         3, "days",
         AMOUNT + " off your GravityKit order, for 48 hours",
         "Your discount is already applied to your cart.",
-        header()
+        header(URL)
         + greeting("Hi " + NAME + ",")
         + para("If price is what’s holding you back, here’s " + AMOUNT + " off the items in your cart. Use code "
                "<strong>" + CODE + "</strong> at checkout, or use the button below and it’s already applied. "
