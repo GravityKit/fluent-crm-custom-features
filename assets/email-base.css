@@ -30,23 +30,38 @@ code {
 	margin-bottom: 10px;
 }
 
-.wp-block-group *:first-child,
-.fc_group *:first-child {
+/* A group's first and last block sit flush with its padding. Every block is in its own table
+   cell, so it is both first and last child there: a descendant `*:last-child` would zero every
+   gap inside the group. Selectors list both forms because some clients insert tbody. */
+.wp-block-group > :first-child,
+.fc_group > table:first-child > tbody > tr > td > :first-child,
+.fc_group > table:first-child > tr > td > :first-child {
 	margin-top: 0;
 }
-.wp-block-group *:last-child,
-.fc_group *:last-child {
+.wp-block-group > :last-child,
+.fc_group > table:last-child > tbody > tr > td > :last-child,
+.fc_group > table:last-child > tr > td > :last-child,
+.fc_group > table:last-child > tbody > tr > td > .fc_buttons_wrap .fc_button,
+.fc_group > table:last-child > tr > td > .fc_buttons_wrap .fc_button {
 	margin-bottom: 0;
 }
 
 /* FluentCRM 3.2.0 ships .fc_button with padding: 8px 20px; 2.9.x rendered 12px 18px.
    No campaign authors its own button padding (checked all 3,816 button blocks), so a
-   blanket override is safe here — unlike border-radius, which 88 blocks do declare. */
+   blanket override is safe here (unlike border-radius, which 88 blocks do declare). */
 .fc_button {
 	padding: 12px 18px;
 	line-height: 1.8;
 	margin-top: 0;
-	margin-bottom: 4px;
+	margin-bottom: 6px;
+}
+
+/* Equal-width buttons, opt in per button via Advanced > Additional CSS class(es). FluentCRM
+   3.2.x drops the editor's button width (`style.dimensions.width`) when rendering; it reads only
+   the legacy `width` attribute. A label longer than 220px widens its button. */
+.fc_button.gk-btn-equal {
+	min-width: 220px;
+	box-sizing: border-box;
 }
 
 /* FluentCRM 3.2.0 renders block images as display:inline-block, which adds baseline
