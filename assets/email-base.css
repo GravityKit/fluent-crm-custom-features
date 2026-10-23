@@ -48,9 +48,12 @@ code {
 
 /* FluentCRM 3.2.0 ships .fc_button with padding: 8px 20px; 2.9.x rendered 12px 18px.
    No campaign authors its own button padding (checked all 3,816 button blocks), so a
-   blanket override is safe here (unlike border-radius, which 88 blocks do declare). */
+   blanket override is safe here (unlike border-radius, which 88 blocks do declare).
+   3.2.0 also drops the <strong> our button labels are wrapped in and sets no weight of its
+   own, so labels rendered in regular weight; the weight restores the bold. */
 .fc_button {
 	padding: 12px 18px;
+	font-weight: 700;
 	line-height: 1.8;
 	margin-top: 0;
 	margin-bottom: 6px;
