@@ -1149,12 +1149,15 @@ class EddCartTracking {
 			}
 		}
 		try {
-			// The link button may beat the checkout field script's debounced capture.
-			// Save this session through the same tracking and consent rules before handing it off.
-			$current = $tracking->getCurrentRecord();
-			$name = $current && ! strcasecmp( (string) $current->email, $email ) ? (string) $current->full_name : '';
-			$record = $tracking->syncCart( $email, $name );
-			if ( ! $record || ! in_array( $record->status, [ 'draft', 'pending', 'processing' ], true ) || strcasecmp( (string) $record->email, $email ) ) {
+			// Read only. This filter runs only for addresses that may use magic links, so a saved
+			// cart or cookie here would show the requester which addresses those are.
+			$record     = $tracking->getCurrentRecord();
+			$cart_hash  = md5( wp_json_encode( wp_list_pluck( $tracking->getCartContents(), 'key' ) ) );
+			$is_current = $record
+				&& in_array( $record->status, [ 'draft', 'pending', 'processing' ], true )
+				&& ! strcasecmp( (string) $record->email, $email )
+				&& $record->cart_hash === $cart_hash;
+			if ( ! $is_current ) {
 				return $fallback;
 			}
 		} catch ( \Throwable $error ) {
@@ -1169,7 +1172,7 @@ class EddCartTracking {
 			[
 				'gk_checkout_cart'    => (int) $record->id,
 				'gk_checkout_expires' => $expires,
-				'gk_checkout_sig'     => self::signInSignature( (int) $record->id, $email, $expires ),
+				'gk_checkout_sig'     => self::signInSignature( $record, $email, $expires ),
 			],
 			$fallback
 		);
@@ -1189,13 +1192,15 @@ class EddCartTracking {
 		header( 'Referrer-Policy: no-referrer' );
 		$user      = wp_get_current_user();
 		$expires   = absint( self::queryText( 'gk_checkout_expires' ) );
-		$expected  = self::signInSignature( $cart_id, (string) $user->user_email, $expires );
-		$is_signed = $expires >= time() && hash_equals( $expected, self::queryText( 'gk_checkout_sig' ) );
-		$record    = $is_signed ? AbandonCartModel::where( 'id', $cart_id )->whereIn( 'provider', [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER ] )->whereIn( 'status', [ 'draft', 'pending', 'processing' ] )->first() : null;
-		if ( $record && ! strcasecmp( (string) $record->email, (string) $user->user_email ) && ( ! $record->user_id || (int) $record->user_id === (int) $user->ID ) ) {
+		$record    = AbandonCartModel::where( 'id', $cart_id )->whereIn( 'provider', [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER ] )->whereIn( 'status', [ 'draft', 'pending', 'processing' ] )->first();
+		$is_signed = $record && $expires >= time() && hash_equals( self::signInSignature( $record, (string) $user->user_email, $expires ), self::queryText( 'gk_checkout_sig' ) );
+		if ( $is_signed && ! strcasecmp( (string) $record->email, (string) $user->user_email ) && ( ! $record->user_id || (int) $record->user_id === (int) $user->ID ) ) {
 			$tracking = new self( self::driverFor( $record->provider ) );
 			try {
 				$tracking->restoreRecord( $record, [], false );
+				// Later syncs and the order then find this row, so a purchase closes it as
+				// recovered instead of starting a new draft and deleting this one.
+				$tracking->setCookie( $record->checkout_key );
 			} catch ( \Throwable $error ) {
 				self::logError( 'restoreSignInCart', $error );
 			}
@@ -1204,9 +1209,17 @@ class EddCartTracking {
 		exit;
 	}
 
-	/** Ties a cart row to the account address the sign-in link was emailed to, until it expires. */
-	private static function signInSignature( int $cart_id, string $email, int $expires ): string {
-		return hash_hmac( 'sha256', implode( '|', [ 'gk_checkout_cart', $cart_id, strtolower( $email ), $expires ] ), wp_salt( 'auth' ) );
+	/**
+	 * Ties a cart row, as it was when the link was sent, to the account address it was emailed to.
+	 * A cart saved over that row afterwards (anyone can save one under any email) no longer matches.
+	 */
+	private static function signInSignature( AbandonCartModel $record, string $email, int $expires ): string {
+		$cart    = (array) $record->cart;
+		$items   = wp_list_pluck( (array) Arr::get( $cart, 'cart_contents', [] ), 'key' );
+		$coupons = array_values( (array) Arr::get( $cart, 'coupons', [] ) );
+		$message = implode( '|', [ 'gk_checkout_cart', (int) $record->id, strtolower( $email ), $expires, md5( wp_json_encode( [ $items, $coupons ] ) ) ] );
+
+		return hash_hmac( 'sha256', $message, wp_salt( 'auth' ) );
 	}
 
 	/**

@@ -99,10 +99,14 @@ try {
 		'provider' => EddCartDriver::PROVIDER,
 		'status'   => 'draft',
 		'currency' => 'USD',
-		'cart'     => [ 'cart_contents' => [ [ 'product_id' => $id, 'price_id' => 1, 'quantity' => 1 ] ] ],
+		'cart'     => [ 'cart_contents' => [ [ 'product_id' => $id, 'price_id' => 1, 'quantity' => 1, 'key' => $id . '|1|1|' ] ] ],
 	] );
 	$sign = new ReflectionMethod( EddCartTracking::class, 'signInSignature' );
 	$sign->setAccessible( true );
+	// Signed as the link is: from the stored row.
+	$signFor = static function ( string $address, int $expires ) use ( $sign, $saved ) {
+		return $sign->invoke( null, AbandonCartModel::find( $saved->id ), $address, $expires );
+	};
 	wp_set_current_user( $userId );
 	// restoreSignInCart() ends in a redirect and exit; the filter stops it first, before WP-CLI's redirect warning.
 	$handoff = static function ( int $expires, string $signature ) use ( $saved ) {
@@ -131,9 +135,15 @@ try {
 	$future = time() + 600;
 	$past   = time() - 60;
 	$assert( [] === $handoff( $future, str_repeat( 'a', 64 ) ), 'A made-up signature restored a cart' );
-	$assert( [] === $handoff( $past, $sign->invoke( null, (int) $saved->id, $email, $past ) ), 'An expired link restored a cart' );
-	$assert( [] === $handoff( $future, $sign->invoke( null, (int) $saved->id, 'someone-else@example.test', $future ) ), "Another account's link restored a cart" );
-	$assert( [ $id ] === $handoff( $future, $sign->invoke( null, (int) $saved->id, strtoupper( $email ), $future ) ), 'The emailed link did not restore the cart' );
+	$assert( [] === $handoff( $past, $signFor( $email, $past ) ), 'An expired link restored a cart' );
+	$assert( [] === $handoff( $future, $signFor( 'someone-else@example.test', $future ) ), "Another account's link restored a cart" );
+	$valid = $signFor( strtoupper( $email ), $future );
+	$assert( [ $id ] === $handoff( $future, $valid ), 'The emailed link did not restore the cart' );
+	// Anyone can save a cart under the address after the link is sent; the link must not restore it.
+	$changed       = AbandonCartModel::find( $saved->id );
+	$changed->cart = [ 'cart_contents' => [ [ 'product_id' => $id, 'price_id' => 0, 'quantity' => 1, 'key' => $id . '|0|1|' ] ] ];
+	$changed->save();
+	$assert( [] === $handoff( $future, $valid ), 'The link restored a cart saved over its row after it was sent' );
 } finally {
 	edd_empty_cart();
 	wp_set_current_user( 0 );
@@ -148,4 +158,4 @@ try {
 		edd_delete_discount( $discountId ); }
 	edd_update_option( 'item_quantities', $quantitySetting );
 }
-echo "PASS native checkout sign-in restoration: product, variation, quantity, coupon, draft, metrics, result and finally flag including native fault; signed handoff refuses forged, expired and other-account links\n";
+echo "PASS native checkout sign-in restoration: product, variation, quantity, coupon, draft, metrics, result and finally flag including native fault; signed handoff refuses forged, expired, other-account and overwritten-cart links\n";
