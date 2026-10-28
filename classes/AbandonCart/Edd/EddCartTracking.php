@@ -1161,19 +1161,37 @@ class EddCartTracking {
 			self::logError( 'checkoutSignInUrl', $error );
 			return $fallback;
 		}
-		return add_query_arg( 'gk_checkout_cart', $record->checkout_key, $fallback );
+		// The cart row ID, never its key: the key also opens the cart's recovery link.
+		// The emailed link lasts 15 minutes; the hour covers the confirm step after it.
+		$expires = time() + HOUR_IN_SECONDS;
+
+		return add_query_arg(
+			[
+				'gk_checkout_cart'    => (int) $record->id,
+				'gk_checkout_expires' => $expires,
+				'gk_checkout_sig'     => self::signInSignature( (int) $record->id, $email, $expires ),
+			],
+			$fallback
+		);
 	}
 
-	/** Authenticated cart handoff; never counts recovery metrics or applies an offer. */
+	/**
+	 * Authenticated cart handoff; never counts recovery metrics or applies an offer.
+	 *
+	 * Requires the emailed signature: anyone can save a cart under any email at checkout.
+	 */
 	public static function restoreSignInCart(): void {
-		if ( empty( $_GET['gk_checkout_cart'] ) || ! is_user_logged_in() ) {
+		$cart_id = absint( self::queryText( 'gk_checkout_cart' ) );
+		if ( ! $cart_id || ! is_user_logged_in() ) {
 			return;
 		}
 		nocache_headers();
 		header( 'Referrer-Policy: no-referrer' );
-		$token = sanitize_text_field( wp_unslash( $_GET['gk_checkout_cart'] ) );
-		$record = AbandonCartModel::where( 'checkout_key', $token )->whereIn( 'provider', [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER ] )->whereIn( 'status', [ 'draft', 'pending', 'processing' ] )->first();
-		$user = wp_get_current_user();
+		$user      = wp_get_current_user();
+		$expires   = absint( self::queryText( 'gk_checkout_expires' ) );
+		$expected  = self::signInSignature( $cart_id, (string) $user->user_email, $expires );
+		$is_signed = $expires >= time() && hash_equals( $expected, self::queryText( 'gk_checkout_sig' ) );
+		$record    = $is_signed ? AbandonCartModel::where( 'id', $cart_id )->whereIn( 'provider', [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER ] )->whereIn( 'status', [ 'draft', 'pending', 'processing' ] )->first() : null;
 		if ( $record && ! strcasecmp( (string) $record->email, (string) $user->user_email ) && ( ! $record->user_id || (int) $record->user_id === (int) $user->ID ) ) {
 			$tracking = new self( self::driverFor( $record->provider ) );
 			try {
@@ -1184,6 +1202,21 @@ class EddCartTracking {
 		}
 		wp_safe_redirect( edd_get_checkout_uri() );
 		exit;
+	}
+
+	/** Ties a cart row to the account address the sign-in link was emailed to, until it expires. */
+	private static function signInSignature( int $cart_id, string $email, int $expires ): string {
+		return hash_hmac( 'sha256', implode( '|', [ 'gk_checkout_cart', $cart_id, strtolower( $email ), $expires ] ), wp_salt( 'auth' ) );
+	}
+
+	/**
+	 * A query arg as sanitized text; empty when missing or not a string (a crafted request).
+	 */
+	private static function queryText( string $key ): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- callers verify a signature instead.
+		$value = $_GET[ $key ] ?? '';
+
+		return is_scalar( $value ) ? sanitize_text_field( wp_unslash( (string) $value ) ) : '';
 	}
 
 	/**
