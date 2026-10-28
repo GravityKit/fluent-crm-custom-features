@@ -115,6 +115,9 @@ class EddCartTracking {
 	 * a normal form post. Each callback checks at run time that EDD carts are enabled.
 	 */
 	public static function registerEarlyHooks(): void {
+		add_filter( 'gk/magic-login/request-redirect', [ self::class, 'checkoutSignInUrl' ], 10, 2 );
+		add_action( 'template_redirect', [ self::class, 'restoreSignInCart' ], 2 );
+
 		// These run inside add-to-cart and order completion. An error here is logged and swallowed:
 		// a missed cart email is recoverable, a broken checkout or undelivered license key is not.
 		$call = function ( string $method ) {
@@ -1028,72 +1031,7 @@ class EddCartTracking {
 			exit;
 		}
 
-		self::$restoring = true;
-
-		$this->selectCartCurrency( $record );
-
-		edd_empty_cart();
-
-		$failed_renewals = [];
-		$failed_upgrades = [];
-
-		foreach ( Arr::get( $record->cart, 'cart_contents', [] ) as $item ) {
-			// Added the way Software Licensing's upgrade link adds it, at today's prorated price.
-			if ( ! empty( $item['is_upgrade'] ) && ! empty( $item['license_id'] ) ) {
-				$added = $this->addUpgradeToCart( $item );
-
-				if ( is_wp_error( $added ) ) {
-					// Never sell the new plan as a new purchase: the customer may already be on it.
-					$failed_upgrades[] = sprintf( '#%d: %s', (int) $item['license_id'], $added->get_error_code() );
-				}
-
-				continue;
-			} elseif ( ! empty( $item['license_id'] ) && function_exists( 'edd_sl_add_renewal_to_cart' ) ) {
-				// Added the way a renewal link adds it, so EDD prices it as a renewal and records it on the license.
-				$added = edd_sl_add_renewal_to_cart( (int) $item['license_id'] );
-
-				if ( ! is_wp_error( $added ) ) {
-					continue;
-				}
-
-				// The license can no longer be renewed (disabled, or its product unpublished). Add the
-				// product as a new purchase so the shopper still lands on a checkout with it.
-				$failed_renewals[] = sprintf( '#%d: %s', (int) $item['license_id'], $added->get_error_code() );
-			}
-
-			$options = [ 'quantity' => (int) Arr::get( $item, 'quantity', 1 ) ];
-
-			if ( null !== Arr::get( $item, 'price_id' ) ) {
-				$options['price_id'] = (int) $item['price_id'];
-			}
-
-			edd_add_to_cart( (int) $item['product_id'], $options );
-		}
-
-		foreach ( array_filter( (array) Arr::get( $record->cart, 'coupons', [] ) ) as $code ) {
-			if ( edd_is_discount_valid( $code, '', false ) ) {
-				edd_set_cart_discount( $code );
-			}
-		}
-
-		// One of ours at most: a code named in the link (a store-wide code such as BFCM50), else the
-		// newest code this cart was sent. Renewals and upgrades never get one.
-		$gets_offer = EddCartDriver::PROVIDER === $record->provider;
-		$ours       = $gets_offer
-			? array_merge(
-				[ strtoupper( sanitize_text_field( (string) Arr::get( $data, 'fc_ab_code', '' ) ) ) ],
-				( new EddRecoveryDiscount() )->getIssuedCodes( $record )
-			)
-			: [];
-
-		foreach ( array_unique( array_filter( $ours ) ) as $code ) {
-			if ( edd_is_discount_valid( $code, '', false ) ) {
-				edd_set_cart_discount( $code );
-				break;
-			}
-		}
-
-		self::$restoring = false;
+		[ $failed_renewals, $failed_upgrades ] = $this->restoreRecord( $record, (array) $data, true );
 
 		$record->click_counts = (int) $record->click_counts + 1;
 		$notes                = [];
@@ -1114,6 +1052,137 @@ class EddCartTracking {
 		$this->setCookie( $record->checkout_key );
 
 		wp_safe_redirect( self::emailCheckoutUrl( $record, (array) $data ) );
+		exit;
+	}
+
+	/** Rebuild from saved items; only recovery links may add a recovery offer. */
+	private function restoreRecord( $record, array $data, bool $recovery ): array {
+		try {
+			self::$restoring = true;
+
+			$this->selectCartCurrency( $record );
+
+			edd_empty_cart();
+
+			$failed_renewals = [];
+			$failed_upgrades = [];
+
+			foreach ( Arr::get( $record->cart, 'cart_contents', [] ) as $item ) {
+				// Added the way Software Licensing's upgrade link adds it, at today's prorated price.
+				if ( ! empty( $item['is_upgrade'] ) && ! empty( $item['license_id'] ) ) {
+					$added = $this->addUpgradeToCart( $item );
+
+					if ( is_wp_error( $added ) ) {
+						// Never sell the new plan as a new purchase: the customer may already be on it.
+						$failed_upgrades[] = sprintf( '#%d: %s', (int) $item['license_id'], $added->get_error_code() );
+					}
+
+					continue;
+				} elseif ( ! empty( $item['license_id'] ) && function_exists( 'edd_sl_add_renewal_to_cart' ) ) {
+					// Added the way a renewal link adds it, so EDD prices it as a renewal and records it on the license.
+					$added = edd_sl_add_renewal_to_cart( (int) $item['license_id'] );
+
+					if ( ! is_wp_error( $added ) ) {
+						continue;
+					}
+
+					// The license can no longer be renewed (disabled, or its product unpublished). Add the
+					// product as a new purchase so the shopper still lands on a checkout with it.
+					$failed_renewals[] = sprintf( '#%d: %s', (int) $item['license_id'], $added->get_error_code() );
+				}
+
+				$options = [ 'quantity' => (int) Arr::get( $item, 'quantity', 1 ) ];
+
+				if ( null !== Arr::get( $item, 'price_id' ) ) {
+					$options['price_id'] = (int) $item['price_id'];
+				}
+
+				edd_add_to_cart( (int) $item['product_id'], $options );
+			}
+
+			foreach ( array_filter( (array) Arr::get( $record->cart, 'coupons', [] ) ) as $code ) {
+				if ( edd_is_discount_valid( $code, '', false ) ) {
+					edd_set_cart_discount( $code );
+				}
+			}
+
+			if ( $recovery ) {
+
+				// One of ours at most: a code named in the link (a store-wide code such as BFCM50), else the
+				// newest code this cart was sent. Renewals and upgrades never get one.
+				$gets_offer = EddCartDriver::PROVIDER === $record->provider;
+				$ours       = $gets_offer
+					? array_merge(
+						[ strtoupper( sanitize_text_field( (string) Arr::get( $data, 'fc_ab_code', '' ) ) ) ],
+						( new EddRecoveryDiscount() )->getIssuedCodes( $record )
+					)
+					: [];
+
+				foreach ( array_unique( array_filter( $ours ) ) as $code ) {
+					if ( edd_is_discount_valid( $code, '', false ) ) {
+						edd_set_cart_discount( $code );
+						break;
+					}
+				}
+
+
+			}
+			return [ $failed_renewals, $failed_upgrades ];
+		} finally {
+			self::$restoring = false;
+		}
+	}
+
+	/** Use only the browser's saved matching cart, never an email-only lookup. */
+	public static function checkoutSignInUrl( string $redirect, string $email ): string {
+		if ( ! wp_parse_url( $redirect, PHP_URL_QUERY ) || '1' !== (string) ( wp_parse_args( wp_parse_url( $redirect, PHP_URL_QUERY ) )['gk_checkout_sign_in'] ?? '' ) ) {
+			return $redirect;
+		}
+		$tracking = self::instanceIfEnabled();
+		$fallback = edd_get_checkout_uri();
+		if ( ! $tracking || $tracking->hasOptedOut() || edd_get_cart_total() <= 0 ) {
+			return $fallback;
+		}
+		foreach ( (array) edd_get_cart_contents() as $item ) {
+			if ( ! empty( $item['options']['is_upgrade'] ) ) {
+				return $fallback;
+			}
+		}
+		try {
+			// The link button may beat the checkout field script's debounced capture.
+			// Save this session through the same tracking and consent rules before handing it off.
+			$current = $tracking->getCurrentRecord();
+			$name = $current && ! strcasecmp( (string) $current->email, $email ) ? (string) $current->full_name : '';
+			$record = $tracking->syncCart( $email, $name );
+			if ( ! $record || ! in_array( $record->status, [ 'draft', 'pending', 'processing' ], true ) || strcasecmp( (string) $record->email, $email ) ) {
+				return $fallback;
+			}
+		} catch ( \Throwable $error ) {
+			self::logError( 'checkoutSignInUrl', $error );
+			return $fallback;
+		}
+		return add_query_arg( 'gk_checkout_cart', $record->checkout_key, $fallback );
+	}
+
+	/** Authenticated cart handoff; never counts recovery metrics or applies an offer. */
+	public static function restoreSignInCart(): void {
+		if ( empty( $_GET['gk_checkout_cart'] ) || ! is_user_logged_in() ) {
+			return;
+		}
+		nocache_headers();
+		header( 'Referrer-Policy: no-referrer' );
+		$token = sanitize_text_field( wp_unslash( $_GET['gk_checkout_cart'] ) );
+		$record = AbandonCartModel::where( 'checkout_key', $token )->whereIn( 'provider', [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER ] )->whereIn( 'status', [ 'draft', 'pending', 'processing' ] )->first();
+		$user = wp_get_current_user();
+		if ( $record && ! strcasecmp( (string) $record->email, (string) $user->user_email ) && ( ! $record->user_id || (int) $record->user_id === (int) $user->ID ) ) {
+			$tracking = new self( self::driverFor( $record->provider ) );
+			try {
+				$tracking->restoreRecord( $record, [], false );
+			} catch ( \Throwable $error ) {
+				self::logError( 'restoreSignInCart', $error );
+			}
+		}
+		wp_safe_redirect( edd_get_checkout_uri() );
 		exit;
 	}
 
