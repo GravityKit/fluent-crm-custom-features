@@ -1,6 +1,7 @@
 <?php
 use CustomCRM\AbandonCart\Edd\EddCartTracking;
 use CustomCRM\AbandonCart\Edd\EddCartDriver;
+use CustomCRM\AbandonCart\Edd\EddRenewalCartDriver;
 use FluentCrm\App\Modules\AbandonCart\AbandonCartModel;
 // Run through WP-CLI on a disposable Siteminter site with EDD and this plugin active.
 $host     = (string) wp_parse_url( home_url(), PHP_URL_HOST );
@@ -104,21 +105,28 @@ try {
 	$sign = new ReflectionMethod( EddCartTracking::class, 'signInSignature' );
 	$sign->setAccessible( true );
 	// Signed as the link is: from the stored row.
-	$signFor = static function ( string $address, int $expires ) use ( $sign, $saved ) {
-		return $sign->invoke( null, AbandonCartModel::find( $saved->id ), $address, $expires );
+	$signFor = static function ( string $address, int $expires, $row = null ) use ( $sign, $saved ) {
+		return $sign->invoke( null, AbandonCartModel::find( ( $row ?: $saved )->id ), $address, $expires );
 	};
 	wp_set_current_user( $userId );
 	// restoreSignInCart() ends in a redirect and exit; the filter stops it first, before WP-CLI's redirect warning.
-	$handoff = static function ( int $expires, string $signature ) use ( $saved ) {
+	// Returns the cart as "product:price" pairs. A cookie makes this the browser that asked for the
+	// link, holding a live cart (the one-site price) that differs from the saved row.
+	$handoff = static function ( int $expires, string $signature, string $cookie = '', $row = null ) use ( $saved, $id ) {
 		$_GET     = [
-			'gk_checkout_cart'    => (string) $saved->id,
+			'gk_checkout_cart'    => (string) ( $row ?: $saved )->id,
 			'gk_checkout_expires' => (string) $expires,
 			'gk_checkout_sig'     => $signature,
 		];
 		$redirect = static function () {
 			throw new RuntimeException( 'fixture-redirect' );
 		};
+		unset( $_COOKIE['fc_ab_edd_cart_token'] );
 		edd_empty_cart();
+		if ( '' !== $cookie ) {
+			$_COOKIE['fc_ab_edd_cart_token'] = $cookie;
+			edd_add_to_cart( $id, [ 'price_id' => 0 ] );
+		}
 		add_filter( 'wp_redirect', $redirect, -1000 );
 		try {
 			EddCartTracking::restoreSignInCart();
@@ -129,8 +137,14 @@ try {
 		} finally {
 			remove_filter( 'wp_redirect', $redirect, -1000 );
 			$_GET = [];
+			unset( $_COOKIE['fc_ab_edd_cart_token'] );
 		}
-		return array_map( 'intval', wp_list_pluck( (array) edd_get_cart_contents(), 'id' ) );
+		return array_map(
+			static function ( $item ) {
+				return (int) $item['id'] . ':' . (int) ( $item['options']['price_id'] ?? -1 );
+			},
+			(array) edd_get_cart_contents()
+		);
 	};
 	$future = time() + 600;
 	$past   = time() - 60;
@@ -138,17 +152,50 @@ try {
 	$assert( [] === $handoff( $past, $signFor( $email, $past ) ), 'An expired link restored a cart' );
 	$assert( [] === $handoff( $future, $signFor( 'someone-else@example.test', $future ) ), "Another account's link restored a cart" );
 	$valid = $signFor( strtoupper( $email ), $future );
-	$assert( [ $id ] === $handoff( $future, $valid ), 'The emailed link did not restore the cart' );
+	$assert( [ $id . ':1' ] === $handoff( $future, $valid ), 'The emailed link did not restore the cart' );
+	$assert( [ $id . ':0' ] === $handoff( $future, $valid, (string) $saved->checkout_key ), 'The browser that asked for the link lost its live cart' );
+	$assert( [ $id . ':1' ] === $handoff( $future, $valid, 'another-browsers-key' ), 'A browser holding another cart was not given the saved cart' );
 	// Anyone can save a cart under the address after the link is sent; the link must not restore it.
 	$changed       = AbandonCartModel::find( $saved->id );
 	$changed->cart = [ 'cart_contents' => [ [ 'product_id' => $id, 'price_id' => 0, 'quantity' => 1, 'key' => $id . '|0|1|' ] ] ];
 	$changed->save();
 	$assert( [] === $handoff( $future, $valid ), 'The link restored a cart saved over its row after it was sent' );
+
+	// Anyone can ask for a link to any address, so a sign-in never rebuilds someone else's renewal.
+	global $wpdb;
+	$license = function_exists( 'edd_sl_add_renewal_to_cart' ) ? $wpdb->get_row( "SELECT id, download_id, price_id, user_id FROM {$wpdb->prefix}edd_licenses WHERE status <> 'disabled' AND user_id > 0 ORDER BY id DESC LIMIT 1" ) : null;
+	if ( $license ) {
+		$owned = new ReflectionMethod( EddCartTracking::class, 'isOwnLicense' );
+		$owned->setAccessible( true );
+		wp_set_current_user( (int) $license->user_id );
+		$assert( true === $owned->invoke( null, (int) $license->id ), "The license owner's renewal was refused" );
+		wp_set_current_user( $userId );
+		$assert( false === $owned->invoke( null, (int) $license->id ), "Another account's renewal was accepted" );
+		$price      = null === $license->price_id ? '' : (int) $license->price_id;
+		$renewalRow = AbandonCartModel::create( [
+			'email'    => $email,
+			'provider' => EddRenewalCartDriver::PROVIDER,
+			'status'   => 'draft',
+			'currency' => 'USD',
+			'cart'     => [
+				'cart_contents' => [
+					[ 'product_id' => $id, 'price_id' => 1, 'quantity' => 1, 'key' => $id . '|1|1|' ],
+					[ 'product_id' => (int) $license->download_id, 'price_id' => $license->price_id, 'quantity' => 1, 'license_id' => (int) $license->id, 'is_renewal' => true, 'key' => $license->download_id . '|' . $price . '|1|' . $license->id ],
+				],
+			],
+		] );
+		$assert( [ $id . ':1' ] === $handoff( $future, $signFor( $email, $future, $renewalRow ), '', $renewalRow ), "A sign-in rebuilt another account's renewal" );
+		$renewalNote = 'other-account renewal skipped';
+	} else {
+		$renewalNote = 'other-account renewal NOT CHECKED (no Software Licensing license on this site)';
+	}
 } finally {
 	edd_empty_cart();
 	wp_set_current_user( 0 );
 	if ( ! empty( $saved ) ) {
 		$saved->delete(); }
+	if ( ! empty( $renewalRow ) ) {
+		$renewalRow->delete(); }
 	if ( ! empty( $userId ) && is_int( $userId ) ) {
 		require_once ABSPATH . 'wp-admin/includes/user.php';
 		wp_delete_user( $userId ); }
@@ -158,4 +205,4 @@ try {
 		edd_delete_discount( $discountId ); }
 	edd_update_option( 'item_quantities', $quantitySetting );
 }
-echo "PASS native checkout sign-in restoration: product, variation, quantity, coupon, draft, metrics, result and finally flag including native fault; signed handoff refuses forged, expired, other-account and overwritten-cart links\n";
+echo "PASS native checkout sign-in restoration: product, variation, quantity, coupon, draft, metrics, result and finally flag including native fault; signed handoff refuses forged, expired, other-account and overwritten-cart links, keeps the requesting browser's live cart; {$renewalNote}\n";

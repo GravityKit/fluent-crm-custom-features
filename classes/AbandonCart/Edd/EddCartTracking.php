@@ -59,6 +59,14 @@ class EddCartTracking {
 	private static $restoring = false;
 
 	/**
+	 * True while the sign-in filter saves a cart. That filter runs only for addresses that may use
+	 * magic links, so a cart cookie set there would tell the requester which addresses those are.
+	 *
+	 * @var bool
+	 */
+	private static $holding_cookie = false;
+
+	/**
 	 * @param EddCartDriver $driver The provider this instance serves.
 	 */
 	public function __construct( EddCartDriver $driver ) {
@@ -1079,6 +1087,12 @@ class EddCartTracking {
 
 					continue;
 				} elseif ( ! empty( $item['license_id'] ) && function_exists( 'edd_sl_add_renewal_to_cart' ) ) {
+					// A sign-in rebuilds only the customer's own renewals: anyone can ask for a link to
+					// any address, so the cart may have been built by someone else.
+					if ( ! $recovery && ! self::isOwnLicense( (int) $item['license_id'] ) ) {
+						continue;
+					}
+
 					// Added the way a renewal link adds it, so EDD prices it as a renewal and records it on the license.
 					$added = edd_sl_add_renewal_to_cart( (int) $item['license_id'] );
 
@@ -1133,9 +1147,19 @@ class EddCartTracking {
 		}
 	}
 
-	/** Use only the browser's saved matching cart, never an email-only lookup. */
-	public static function checkoutSignInUrl( string $redirect, string $email ): string {
-		if ( ! wp_parse_url( $redirect, PHP_URL_QUERY ) || '1' !== (string) ( wp_parse_args( wp_parse_url( $redirect, PHP_URL_QUERY ) )['gk_checkout_sign_in'] ?? '' ) ) {
+	/**
+	 * Adds this browser's saved cart to a checkout sign-in link. With no cart cookie, saving the cart
+	 * reuses the newest draft for the address, which another browser may also be writing; the
+	 * signature covers the cart's contents, so a later change stops the link restoring it.
+	 *
+	 * @param mixed  $redirect Where the link returns to.
+	 * @param string $email    The address the link is sent to.
+	 * @return mixed
+	 */
+	public static function checkoutSignInUrl( $redirect, $email = '' ) {
+		$query  = is_string( $redirect ) ? (string) wp_parse_url( $redirect, PHP_URL_QUERY ) : '';
+		$marker = wp_parse_args( $query )['gk_checkout_sign_in'] ?? '';
+		if ( '1' !== $marker || ! is_string( $email ) || '' === $email ) {
 			return $redirect;
 		}
 		$tracking = self::instanceIfEnabled();
@@ -1149,14 +1173,21 @@ class EddCartTracking {
 			}
 		}
 		try {
-			// Read only. This filter runs only for addresses that may use magic links, so a saved
-			// cart or cookie here would show the requester which addresses those are.
-			$record     = $tracking->getCurrentRecord();
-			$cart_hash  = md5( wp_json_encode( wp_list_pluck( $tracking->getCartContents(), 'key' ) ) );
+			// The link button can beat the checkout field script's save, so save the cart here,
+			// through the same tracking and consent rules, but without its cookie.
+			$current = $tracking->getCurrentRecord();
+			$name    = $current && ! strcasecmp( (string) $current->email, $email ) ? (string) $current->full_name : '';
+			self::$holding_cookie = true;
+			try {
+				$saved = $tracking->syncCart( $email, $name );
+			} finally {
+				self::$holding_cookie = false;
+			}
+			// Signed as restoreSignInCart() will read it: from the stored row.
+			$record     = $saved ? AbandonCartModel::find( $saved->id ) : null;
 			$is_current = $record
 				&& in_array( $record->status, [ 'draft', 'pending', 'processing' ], true )
-				&& ! strcasecmp( (string) $record->email, $email )
-				&& $record->cart_hash === $cart_hash;
+				&& ! strcasecmp( (string) $record->email, $email );
 			if ( ! $is_current ) {
 				return $fallback;
 			}
@@ -1194,7 +1225,11 @@ class EddCartTracking {
 		$expires   = absint( self::queryText( 'gk_checkout_expires' ) );
 		$record    = AbandonCartModel::where( 'id', $cart_id )->whereIn( 'provider', [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER ] )->whereIn( 'status', [ 'draft', 'pending', 'processing' ] )->first();
 		$is_signed = $record && $expires >= time() && hash_equals( self::signInSignature( $record, (string) $user->user_email, $expires ), self::queryText( 'gk_checkout_sig' ) );
-		if ( $is_signed && ! strcasecmp( (string) $record->email, (string) $user->user_email ) && ( ! $record->user_id || (int) $record->user_id === (int) $user->ID ) ) {
+		// The browser that asked for the link already holds the live cart, which can include changes
+		// the saved row never saw (the checkout tier switch writes the session directly).
+		$token           = sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ?? '' ) );
+		$is_same_browser = $record && '' !== $token && hash_equals( (string) $record->checkout_key, $token );
+		if ( $is_signed && ! $is_same_browser && ! strcasecmp( (string) $record->email, (string) $user->user_email ) && ( ! $record->user_id || (int) $record->user_id === (int) $user->ID ) ) {
 			$tracking = new self( self::driverFor( $record->provider ) );
 			try {
 				$tracking->restoreRecord( $record, [], false );
@@ -1215,11 +1250,23 @@ class EddCartTracking {
 	 */
 	private static function signInSignature( AbandonCartModel $record, string $email, int $expires ): string {
 		$cart    = (array) $record->cart;
-		$items   = wp_list_pluck( (array) Arr::get( $cart, 'cart_contents', [] ), 'key' );
+		$items   = array_map(
+			static function ( $item ) {
+				return [ (string) Arr::get( (array) $item, 'key', '' ), (bool) Arr::get( (array) $item, 'is_upgrade' ) ];
+			},
+			(array) Arr::get( $cart, 'cart_contents', [] )
+		);
 		$coupons = array_values( (array) Arr::get( $cart, 'coupons', [] ) );
 		$message = implode( '|', [ 'gk_checkout_cart', (int) $record->id, strtolower( $email ), $expires, md5( wp_json_encode( [ $items, $coupons ] ) ) ] );
 
 		return hash_hmac( 'sha256', $message, wp_salt( 'auth' ) );
+	}
+
+	/** Software Licensing's own test for showing a renewal's full key: the license is the signed-in user's. */
+	private static function isOwnLicense( int $license_id ): bool {
+		$license = edd_software_licensing()->get_license( $license_id );
+
+		return $license && is_user_logged_in() && (int) $license->user_id === get_current_user_id();
 	}
 
 	/**
@@ -1662,7 +1709,7 @@ class EddCartTracking {
 	 * @param int    $days  0 for the `fluent_crm/ab_cart_cookie_validity` default.
 	 */
 	private function setCookie( string $value, int $days = 0 ): void {
-		if ( headers_sent() ) {
+		if ( headers_sent() || self::$holding_cookie ) {
 			return;
 		}
 
