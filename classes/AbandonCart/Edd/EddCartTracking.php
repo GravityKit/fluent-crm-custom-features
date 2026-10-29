@@ -14,11 +14,13 @@ use FluentCrm\Framework\Support\Arr;
  *
  * A cart is only recorded once it has an email: typed at checkout (sent by the checkout script),
  * or the logged-in user's. After that every cart change updates the same row, found by the
- * `fc_ab_edd_cart_token` cookie.
+ * `fc_ab_edd_cart_token` cookie. The cookie holds the row ID and a signature, never the checkout
+ * key: the key opens the cart's recovery link. Carts are never found by email (getCurrentRecord()).
  */
 class EddCartTracking {
 
 	private const COOKIE        = 'fc_ab_edd_cart_token';
+	private const HANDOFF       = 'fc_ab_edd_cart_handoff';
 	private const OPT_OUT       = 'fc_ab_cart_skip_track';
 	private const NONCE         = 'customcrm_edd_ab_cart';
 	private const AJAX_SYNC     = 'customcrm_edd_ab_cart_sync';
@@ -27,6 +29,9 @@ class EddCartTracking {
 	private const OPEN_STATUSES = [ 'draft', 'processing', 'pending', 'opt_out' ];
 	private const PROVIDERS     = [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER, EddUpgradeCartDriver::PROVIDER ];
 	private const INDEX_OPTION  = 'customcrm_ab_cart_indexes';
+
+	/** Unix time cart cookies started being signed: an unsigned cookie opens only carts saved before then. */
+	private const SIGNED_SINCE_OPTION = 'customcrm_ab_cart_signed_cookies_at';
 
 	/** Days after a renewal or upgrade cart is marked lost that renewing or upgrading its license still counts as recovering it. */
 	private const LOST_RENEWAL_DAYS = 30;
@@ -123,6 +128,7 @@ class EddCartTracking {
 	 * a normal form post. Each callback checks at run time that EDD carts are enabled.
 	 */
 	public static function registerEarlyHooks(): void {
+		add_option( self::SIGNED_SINCE_OPTION, time() );
 		add_filter( 'gk/magic-login/request-redirect', [ self::class, 'checkoutSignInUrl' ], 10, 2 );
 		add_action( 'template_redirect', [ self::class, 'restoreSignInCart' ], 2 );
 
@@ -414,7 +420,7 @@ class EddCartTracking {
 			return null;
 		}
 
-		$record = $this->getCurrentRecord( $email );
+		$record = $this->getCurrentRecord();
 		$items  = $this->getCartContents();
 		$total  = (float) edd_get_cart_total();
 
@@ -425,8 +431,14 @@ class EddCartTracking {
 		// Once a cart's sequence has started, it belongs to that email and that kind of cart. Someone
 		// typing another address, or turning a renewal or upgrade into a new purchase, starts a new cart; only a
 		// draft may change, which is a shopper correcting a typo or still building the cart.
-		$started = $record && ! in_array( $record->status, [ 'draft', 'pending' ], true );
-		if ( $started && ( 0 !== strcasecmp( (string) $record->email, $email ) || $record->provider !== $provider ) ) {
+		$started     = $record && ! in_array( $record->status, [ 'draft', 'pending' ], true );
+		$new_address = $started && 0 !== strcasecmp( (string) $record->email, $email );
+		// Back from a new-purchase reminder's link under another address: the new cart names the emailed
+		// one, so the purchase closes both. The cookie alone is not enough: on a shared computer it can
+		// outlive its shopper. Renewal and upgrade carts close only when their license does.
+		$is_reminder_return = $new_address && 'processing' === $record->status && EddCartDriver::PROVIDER === $record->provider && self::handoffCartId() === (int) $record->id;
+		$left_cart_id       = $is_reminder_return ? (int) $record->id : 0;
+		if ( $new_address || ( $started && $record->provider !== $provider ) ) {
 			$record = null;
 		}
 
@@ -456,11 +468,16 @@ class EddCartTracking {
 		$name_parts = explode( ' ', $full_name, 2 );
 		$previous   = $record ? ( $record->cart ?: [] ) : [];
 
+		// A logged-out save from another of the shopper's browsers keeps the account a signed-in save
+		// tied to the cart, while the cart still uses that account's address (OneCartPerAddress reads it).
+		$tied_user    = $record && $record->user_id ? get_userdata( (int) $record->user_id ) : false;
+		$kept_user_id = $tied_user && 0 === strcasecmp( (string) $tied_user->user_email, $email ) ? (int) $tied_user->ID : null;
+
 		$data = [
 			'email'      => $email,
 			'full_name'  => $full_name,
 			'provider'   => $provider,
-			'user_id'    => get_current_user_id() ?: null,
+			'user_id'    => get_current_user_id() ?: $kept_user_id,
 			'contact_id' => $contact ? $contact->id : null,
 			'cart_hash'  => md5( wp_json_encode( wp_list_pluck( $items, 'key' ) ) ),
 			'subtotal'   => $this->money( edd_get_cart_subtotal() ),
@@ -483,6 +500,7 @@ class EddCartTracking {
 				// Renewals and upgrades get no discount.
 				'recovery_discount'  => $has_offer ? Arr::get( $previous, 'recovery_discount' ) : null,
 				'recovery_discounts' => $has_offer ? Arr::get( $previous, 'recovery_discounts' ) : null,
+				'from_cart_id'       => $left_cart_id ?: Arr::get( $previous, 'from_cart_id' ),
 			],
 		];
 
@@ -494,14 +512,9 @@ class EddCartTracking {
 			$record->save();
 		}
 
-		// Typing name and email fires overlapping requests; each can miss the others' insert.
-		AbandonCartModel::whereIn( 'provider', self::PROVIDERS )
-			->where( 'email', $email )
-			->where( 'id', '!=', $record->id )
-			->whereIn( 'status', [ 'draft', 'pending' ] )
-			->delete();
-
-		$this->setCookie( $record->checkout_key );
+		// Other drafts for this address stay: each belongs to the browser that saved it. The runner
+		// emails one of them (OneCartPerAddress).
+		$this->setCookie( self::cookieValue( $record ) );
 
 		// Renewal wins: a license being renewed stops getting upgrade emails.
 		if ( $is_renewal ) {
@@ -571,11 +584,10 @@ class EddCartTracking {
 	 * @param array<string,mixed> $order_data
 	 */
 	public function linkOrder( $order_id, $order_data = [] ): void {
-		$email = (string) ( Arr::get( $order_data, 'user_email' ) ?: Arr::get( $order_data, 'user_info.email', '' ) );
-
 		// Only a renewal order may close a renewal cart, and only an upgrade order an upgrade cart.
+		// The order's email is not checked: a shopper can change it and pay before the change is saved.
 		$provider = self::providerForItems( (array) Arr::get( $order_data, 'cart_details', [] ) );
-		$record   = $this->getCurrentRecord( $email, $provider );
+		$record   = $this->getCurrentRecord( $provider );
 
 		if ( ! $record ) {
 			return;
@@ -614,7 +626,20 @@ class EddCartTracking {
 		}
 
 		if ( $record ) {
+			// Read first: closeCart() deletes a draft.
+			$left        = self::leftCart( $record );
+			$was_emailed = 'processing' === $record->status;
 			$this->closeCart( $record, $order );
+
+			if ( $left ) {
+				$this->cancelCartAutomation( $left, __( 'Cancelled because the shopper bought under another address', 'fluent-crm-custom-features' ) );
+				// One order counts as one recovery: the cart that was emailed and bought gets the credit.
+				if ( $was_emailed ) {
+					$left->deleteCart();
+				} else {
+					$this->closeCart( $left, $order );
+				}
+			}
 
 			$reasons = [
 				EddRenewalCartDriver::PROVIDER => __( 'Cancelled because the contact renewed', 'fluent-crm-custom-features' ),
@@ -1057,7 +1082,8 @@ class EddCartTracking {
 		}
 		$record->save();
 
-		$this->setCookie( $record->checkout_key );
+		$this->setCookie( self::cookieValue( $record ) );
+		$this->setHandoffCookie( $record );
 
 		wp_safe_redirect( self::emailCheckoutUrl( $record, (array) $data ) );
 		exit;
@@ -1148,9 +1174,9 @@ class EddCartTracking {
 	}
 
 	/**
-	 * Adds this browser's saved cart to a checkout sign-in link. With no cart cookie, saving the cart
-	 * reuses the newest draft for the address, which another browser may also be writing; the
-	 * signature covers the cart's contents, so a later change stops the link restoring it.
+	 * Adds this browser's saved cart to a checkout sign-in link. A browser without a cart cookie saves
+	 * a cart of its own: only an address's signed-in owner picks up a cart by email. The signature
+	 * covers the cart's contents, so a later change stops the link restoring it.
 	 *
 	 * @param mixed  $redirect Where the link returns to.
 	 * @param string $email    The address the link is sent to.
@@ -1191,6 +1217,8 @@ class EddCartTracking {
 			if ( ! $is_current ) {
 				return $fallback;
 			}
+			// FluentCRM emails a draft once it has gone unchanged for a while; asking for a link is activity.
+			$record->touch();
 		} catch ( \Throwable $error ) {
 			self::logError( 'checkoutSignInUrl', $error );
 			return $fallback;
@@ -1221,21 +1249,31 @@ class EddCartTracking {
 		}
 		nocache_headers();
 		header( 'Referrer-Policy: no-referrer' );
-		$user      = wp_get_current_user();
-		$expires   = absint( self::queryText( 'gk_checkout_expires' ) );
-		$record    = AbandonCartModel::where( 'id', $cart_id )->whereIn( 'provider', [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER ] )->whereIn( 'status', [ 'draft', 'pending', 'processing' ] )->first();
+		$user    = wp_get_current_user();
+		$expires = absint( self::queryText( 'gk_checkout_expires' ) );
+		// A draft the runner held back (skipped) is still the cart this link was sent for.
+		$record    = AbandonCartModel::where( 'id', $cart_id )->whereIn( 'provider', [ EddCartDriver::PROVIDER, EddRenewalCartDriver::PROVIDER ] )->whereIn( 'status', [ 'draft', 'pending', 'processing', 'skipped' ] )->first();
 		$is_signed = $record && $expires >= time() && hash_equals( self::signInSignature( $record, (string) $user->user_email, $expires ), self::queryText( 'gk_checkout_sig' ) );
+		$is_theirs = $is_signed && ! strcasecmp( (string) $record->email, (string) $user->user_email ) && ( ! $record->user_id || (int) $record->user_id === (int) $user->ID );
 		// The browser that asked for the link already holds the live cart, which can include changes
 		// the saved row never saw (the checkout tier switch writes the session directly).
-		$token           = sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ?? '' ) );
-		$is_same_browser = $record && '' !== $token && hash_equals( (string) $record->checkout_key, $token );
-		if ( $is_signed && ! $is_same_browser && ! strcasecmp( (string) $record->email, (string) $user->user_email ) && ( ! $record->user_id || (int) $record->user_id === (int) $user->ID ) ) {
-			$tracking = new self( self::driverFor( $record->provider ) );
+		$is_same_browser = $record && null !== self::cookieRecord(
+			static function () use ( $record ) {
+				return AbandonCartModel::where( 'id', (int) $record->id );
+			}
+		);
+		if ( $is_theirs ) {
 			try {
-				$tracking->restoreRecord( $record, [], false );
-				// Later syncs and the order then find this row, so a purchase closes it as
-				// recovered instead of starting a new draft and deleting this one.
-				$tracking->setCookie( $record->checkout_key );
+				if ( ! $is_same_browser ) {
+					$tracking = new self( self::driverFor( $record->provider ) );
+					$tracking->restoreRecord( $record, [], false );
+					// Later syncs and the order then find this row, so a purchase closes it as
+					// recovered instead of leaving it open beside a new draft.
+					$tracking->setCookie( self::cookieValue( $record ) );
+					$tracking->setHandoffCookie( $record );
+				}
+				// Signing in is activity: the cart is not abandoned while its shopper signs in.
+				$record->touch();
 			} catch ( \Throwable $error ) {
 				self::logError( 'restoreSignInCart', $error );
 			}
@@ -1622,32 +1660,21 @@ class EddCartTracking {
 	}
 
 	/**
-	 * Find this visitor's open cart: by cookie token, then email, then logged-in user.
+	 * Find this visitor's open cart: by cookie, then by logged-in user.
 	 *
-	 * @param string $email    Shopper email, if known.
+	 * Never by email: anyone can type any email at checkout, and a draft found that way can belong to
+	 * another browser that keeps writing to it. A signed-in customer also gets carts tied to their account.
+	 *
 	 * @param string $provider Limit to one provider; empty for either EDD provider.
 	 */
-	private function getCurrentRecord( string $email = '', string $provider = '' ): ?AbandonCartModel {
-		$token = sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ?? '' ) );
-
+	private function getCurrentRecord( string $provider = '' ): ?AbandonCartModel {
 		$query = function () use ( $provider ) {
 			return AbandonCartModel::whereIn( 'provider', $provider ? [ $provider ] : self::PROVIDERS )->whereIn( 'status', self::OPEN_STATUSES );
 		};
 
-		if ( $token ) {
-			$record = $query()->where( 'checkout_key', $token )->first();
-			if ( $record ) {
-				return $record;
-			}
-		}
-
-		// Anyone can type any email at checkout, so a match on email alone never hands over a cart
-		// that is being emailed: its recovery link and discount code belong to that shopper.
-		if ( $email ) {
-			$record = $query()->where( 'email', $email )->whereIn( 'status', [ 'draft', 'pending' ] )->orderBy( 'id', 'DESC' )->first();
-			if ( $record ) {
-				return $record;
-			}
+		$record = self::cookieRecord( $query );
+		if ( $record ) {
+			return $record;
 		}
 
 		$user_id = get_current_user_id();
@@ -1657,6 +1684,18 @@ class EddCartTracking {
 		}
 
 		return null;
+	}
+
+	/**
+	 * The new-purchase cart that was being emailed when this cart's browser switched to another
+	 * address (syncCart()). Checked here as well, because a draft's provider can change later.
+	 *
+	 * @param AbandonCartModel $record The cart the order closed.
+	 */
+	private static function leftCart( AbandonCartModel $record ): ?AbandonCartModel {
+		$id = (int) Arr::get( (array) $record->cart, 'from_cart_id', 0 );
+
+		return $id ? AbandonCartModel::where( 'id', $id )->where( 'provider', EddCartDriver::PROVIDER )->where( 'status', 'processing' )->first() : null;
 	}
 
 	/**
@@ -1703,9 +1742,97 @@ class EddCartTracking {
 	}
 
 	/**
+	 * The cart this browser's cookie names. A bare checkout key, which the cookie held before it was
+	 * signed, opens only a cart saved before then, and only while such a cookie can still exist, so a
+	 * shopper mid-checkout during the change keeps their cart.
+	 *
+	 * @param callable $query Returns a query for the providers and statuses wanted.
+	 */
+	private static function cookieRecord( callable $query ): ?AbandonCartModel {
+		$token = sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ?? '' ) );
+
+		if ( '' === $token ) {
+			return null;
+		}
+
+		[ $id, $signature ] = array_pad( explode( '.', $token, 2 ), 2, '' );
+
+		if ( '' === $signature ) {
+			$signed_at   = (int) get_option( self::SIGNED_SINCE_OPTION, 0 );
+			$cookie_days = (int) apply_filters( 'fluent_crm/ab_cart_cookie_validity', 30 );
+			$can_exist   = $signed_at && time() < $signed_at + $cookie_days * DAY_IN_SECONDS;
+
+			// FluentCRM stores created_at in the site's time zone.
+			return $can_exist ? $query()->where( 'checkout_key', $token )->where( 'created_at', '<', wp_date( 'Y-m-d H:i:s', $signed_at ) )->first() : null;
+		}
+
+		$record = $query()->where( 'id', absint( $id ) )->first();
+
+		return $record && hash_equals( self::cookieSignature( $record ), $signature ) ? $record : null;
+	}
+
+	/**
+	 * The cookie value for a cart: `<row ID>.<signature>`.
+	 *
+	 * @param AbandonCartModel $record The browser's cart.
+	 */
+	private static function cookieValue( AbandonCartModel $record ): string {
+		return (int) $record->id . '.' . self::cookieSignature( $record );
+	}
+
+	/**
+	 * Proves the cookie was set for this row. The cookie never contains the key, which opens the recovery link.
+	 *
+	 * @param AbandonCartModel $record The cart the cookie names.
+	 */
+	private static function cookieSignature( AbandonCartModel $record ): string {
+		return hash_hmac( 'sha256', 'cart-cookie|' . (int) $record->id . '|' . $record->checkout_key, wp_salt( 'auth' ) );
+	}
+
+	/**
+	 * Marks this browser as handed the cart by its reminder or sign-in link, for a day.
+	 *
+	 * @param AbandonCartModel $record The cart the link restored.
+	 */
+	private function setHandoffCookie( AbandonCartModel $record ): void {
+		if ( headers_sent() || self::$holding_cookie ) {
+			return;
+		}
+
+		$expires = time() + DAY_IN_SECONDS;
+		$value   = (int) $record->id . '.' . $expires . '.' . self::handoffSignature( (int) $record->id, $expires );
+
+		setcookie( self::HANDOFF, $value, $expires, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
+		$_COOKIE[ self::HANDOFF ] = $value;
+	}
+
+	/**
+	 * The cart a reminder or sign-in link handed this browser in the last day, or 0.
+	 */
+	private static function handoffCartId(): int {
+		$token = sanitize_text_field( wp_unslash( $_COOKIE[ self::HANDOFF ] ?? '' ) );
+
+		[ $id, $expires, $signature ] = array_pad( explode( '.', $token, 3 ), 3, '' );
+
+		$is_valid = (int) $expires > time() && hash_equals( self::handoffSignature( (int) $id, (int) $expires ), $signature );
+
+		return $is_valid ? (int) $id : 0;
+	}
+
+	/**
+	 * Proves the handoff cookie was set for this cart and this end time.
+	 *
+	 * @param int $id      Cart row ID.
+	 * @param int $expires Unix time the handoff ends.
+	 */
+	private static function handoffSignature( int $id, int $expires ): string {
+		return hash_hmac( 'sha256', 'cart-handoff|' . $id . '|' . $expires, wp_salt( 'auth' ) );
+	}
+
+	/**
 	 * Sets the cart token cookie, and `$_COOKIE` for the rest of this request.
 	 *
-	 * @param string $value Checkout key; empty with a negative `$days` to clear it.
+	 * @param string $value cookieValue() of the cart; empty with a negative `$days` to clear it.
 	 * @param int    $days  0 for the `fluent_crm/ab_cart_cookie_validity` default.
 	 */
 	private function setCookie( string $value, int $days = 0 ): void {
