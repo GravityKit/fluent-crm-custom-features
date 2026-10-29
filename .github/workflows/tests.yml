@@ -1,0 +1,32 @@
+name: Validate pull request
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  php-syntax:
+    name: PHP syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+      - name: Lint PHP before integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r -d '' file; do
+            php -l "$file" > /dev/null || fail=1
+          done < <(find . -name '*.php' -not -path './vendor/*' -not -path './vendor-prefixed/*' -not -path './.git/*' -print0)
+          exit "$fail"
