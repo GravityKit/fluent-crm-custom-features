@@ -552,7 +552,7 @@ class EddCartTracking {
 				'product_id'    => $product_id,
 				'price_id'      => null === $price_id ? null : (int) $price_id,
 				'quantity'      => $quantity,
-				'title'         => wp_strip_all_tags( (string) Arr::get( $item, 'name', edd_get_download_name( $product_id, $price_id ) ) ),
+				'title'         => $this->cartItemTitle( $item, $product_id, $price_id ),
 				'line_total'    => $this->money( Arr::get( $item, 'price', 0 ) ),
 				'item_price'    => $this->money( Arr::get( $item, 'item_price', 0 ) ),
 				'product_image' => $image ?: '',
@@ -562,6 +562,31 @@ class EddCartTracking {
 		}
 
 		return $items;
+	}
+
+	/**
+	 * The name an email shows for a cart item: the product, then its price option when the
+	 * product has variable prices, e.g. "GravityView Pro, Up to 10 Sites".
+	 *
+	 * EDD's cart details carry only the product title, so a customer could not tell which plan
+	 * the item was. A single-price product keeps its plain title.
+	 *
+	 * @param array<string,mixed> $item       EDD cart details item.
+	 * @param int                 $product_id The download ID.
+	 * @param mixed               $price_id   The item's price ID, or null.
+	 */
+	private function cartItemTitle( array $item, int $product_id, $price_id ): string {
+		$title = wp_strip_all_tags( (string) Arr::get( $item, 'name', edd_get_download_name( $product_id ) ) );
+
+		$has_price_id = is_numeric( $price_id );
+		$is_variable  = $has_price_id && edd_has_variable_prices( $product_id );
+		$option_name  = $is_variable ? wp_strip_all_tags( (string) edd_get_price_option_name( $product_id, (int) $price_id ) ) : '';
+
+		if ( '' === $option_name ) {
+			return $title;
+		}
+
+		return $title . ', ' . $option_name;
 	}
 
 	/**
