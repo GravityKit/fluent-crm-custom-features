@@ -111,6 +111,7 @@ $resolve  = [
 	[ 'leapseconds', 'US', null, 'America/New_York', 'country', 'a zone-data file name is not a zone' ],
 	[ 'tzdata.zi', null, null, 'America/Denver', 'site', 'a zone-data file name with nothing else falls back to the site zone' ],
 	[ 'Mars/Base', 'US', null, 'America/New_York', 'country', 'an unknown zone with no state falls back to the country' ],
+	[ '', 'UK', null, 'Europe/London', 'country', 'UK is treated as GB' ],
 	[ '', 'us', 'CA', 'America/Los_Angeles', 'state', 'a US state code, lower-case country' ],
 	[ '', 'US', 'california', 'America/Los_Angeles', 'state', 'a US state name, any case' ],
 	[ '', 'US', 'New  York ', 'America/New_York', 'state', 'a state name with extra spaces' ],
@@ -942,6 +943,28 @@ $url_data->url_token = substr( $click_row->email_hash, 0, 8 );
 ( new RedirectionHandler() )->trackUrlClick( (int) $click_row->id, $url_data, true );
 unset( $_REQUEST['ano'] );
 lt_check( 'ClickLog: an anonymous click is not logged', 2 === count( $count_clicks() ) );
+
+add_filter( 'fluent_crm/will_track_user_ip', '__return_false' );
+$url_data            = UrlStores::getRowByShort( $short );
+$url_data->url_token = substr( $click_row->email_hash, 0, 8 );
+( new RedirectionHandler() )->trackUrlClick( (int) $click_row->id, $url_data );
+remove_filter( 'fluent_crm/will_track_user_ip', '__return_false' );
+$no_ip_clicks = $count_clicks();
+lt_check( 'ClickLog: no IP is stored when FluentCRM IP tracking is off', 3 === count( $no_ip_clicks ) && '' === $no_ip_clicks[2]['ip'], $no_ip_clicks[2] ?? null );
+
+$click_email = (string) $wpdb->get_var( $wpdb->prepare( "SELECT email FROM {$p}fc_subscribers WHERE id = %d", $click_row->subscriber_id ) );
+$exported    = $click_log->exportClicks( $click_email );
+lt_check( 'ClickLog: the privacy exporter is registered and returns the clicks', isset( apply_filters( 'wp_privacy_personal_data_exporters', [] )['customcrm-email-clicks'] ) && 3 <= count( $exported['data'] ) && $exported['done'], count( $exported['data'] ) );
+
+$erased = $click_log->eraseClicks( $click_email );
+lt_check( 'ClickLog: the privacy eraser is registered and removes the clicks', isset( apply_filters( 'wp_privacy_personal_data_erasers', [] )['customcrm-email-clicks'] ) && $erased['items_removed'] && ! $count_clicks(), count( $count_clicks() ) );
+lt_check( 'ClickLog: the eraser also removes the contact\'s local-time records', 0 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . AssignmentLog::table() . ' WHERE subscriber_id = %d', $click_row->subscriber_id ) ) );
+
+$url_data            = UrlStores::getRowByShort( $short );
+$url_data->url_token = substr( $click_row->email_hash, 0, 8 );
+( new RedirectionHandler() )->trackUrlClick( (int) $click_row->id, $url_data );
+do_action( 'fluentcrm_before_subscribers_deleted', [ (int) $click_row->subscriber_id ] );
+lt_check( 'ClickLog: deleting a contact removes their clicks', ! $count_clicks(), count( $count_clicks() ) );
 
 /*
  * 12. Browser time zone capture.

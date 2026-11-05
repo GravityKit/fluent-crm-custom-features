@@ -409,14 +409,18 @@ final class SendTime {
 	 */
 	private static function countryCode( string $country, array $names ): string {
 		$country = strtoupper( trim( $country ) );
+		$key     = self::nameKey( $country );
+
+		// Before the two-letter return: "UK" is not a country code.
+		if ( isset( self::COUNTRY_ALIASES[ $key ] ) ) {
+			return self::COUNTRY_ALIASES[ $key ];
+		}
 
 		if ( 2 === strlen( $country ) ) {
 			return $country;
 		}
 
-		$key = self::nameKey( $country );
-
-		return self::COUNTRY_ALIASES[ $key ] ?? ( $names[ $key ] ?? $country );
+		return $names[ $key ] ?? $country;
 	}
 
 	/**

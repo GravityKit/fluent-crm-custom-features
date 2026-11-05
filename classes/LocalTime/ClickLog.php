@@ -21,8 +21,124 @@ class ClickLog {
 
 	private const VERSION = '1';
 
+	private const EXPORT_PAGE = 100;
+
 	public function register(): void {
 		add_action( 'fluent_crm/email_url_clicked', [ $this, 'logClick' ], 10, 2 );
+		add_action( 'fluentcrm_before_subscribers_deleted', [ $this, 'forgetContacts' ] );
+		add_filter( 'wp_privacy_personal_data_exporters', [ $this, 'addExporter' ] );
+		add_filter( 'wp_privacy_personal_data_erasers', [ $this, 'addEraser' ] );
+	}
+
+	/**
+	 * A deleted contact leaves no clicks or local-time records behind.
+	 *
+	 * @param int[] $contact_ids FluentCRM contact IDs.
+	 */
+	public function forgetContacts( $contact_ids ): void {
+		global $wpdb;
+
+		$contact_ids = array_filter( array_map( 'intval', (array) $contact_ids ) );
+
+		if ( ! $contact_ids ) {
+			return;
+		}
+
+		$placeholders = implode( ',', array_fill( 0, count( $contact_ids ), '%d' ) );
+
+		foreach ( [ self::tableName(), AssignmentLog::table() ] as $table ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE subscriber_id IN ({$placeholders})", $contact_ids ) );
+		}
+	}
+
+	/**
+	 * @param array $exporters WordPress's personal data exporters.
+	 */
+	public function addExporter( $exporters ): array {
+		$exporters['customcrm-email-clicks'] = [
+			'exporter_friendly_name' => __( 'Campaign email clicks', 'fluent-crm-custom-features' ),
+			'callback'               => [ $this, 'exportClicks' ],
+		];
+
+		return $exporters;
+	}
+
+	/**
+	 * @param array $erasers WordPress's personal data erasers.
+	 */
+	public function addEraser( $erasers ): array {
+		$erasers['customcrm-email-clicks'] = [
+			'eraser_friendly_name' => __( 'Campaign email clicks', 'fluent-crm-custom-features' ),
+			'callback'             => [ $this, 'eraseClicks' ],
+		];
+
+		return $erasers;
+	}
+
+	/**
+	 * @return array{data: array, done: bool}
+	 */
+	public function exportClicks( string $email, int $page = 1 ): array {
+		global $wpdb;
+
+		$contact_id = $this->contactId( $email );
+
+		if ( ! $contact_id ) {
+			return [ 'data' => [], 'done' => true ];
+		}
+
+		$table = self::tableName();
+		$rows  = $wpdb->get_results( $wpdb->prepare(
+			"SELECT id, campaign_id, ip, user_agent, clicked_at_utc FROM {$table} WHERE subscriber_id = %d ORDER BY id LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$contact_id,
+			self::EXPORT_PAGE,
+			( max( 1, $page ) - 1 ) * self::EXPORT_PAGE
+		) );
+		$data  = [];
+
+		foreach ( (array) $rows as $row ) {
+			$data[] = [
+				'group_id'    => 'customcrm-email-clicks',
+				'group_label' => __( 'Campaign email clicks', 'fluent-crm-custom-features' ),
+				'item_id'     => 'customcrm-email-click-' . $row->id,
+				'data'        => [
+					[ 'name' => __( 'Campaign ID', 'fluent-crm-custom-features' ), 'value' => $row->campaign_id ],
+					[ 'name' => __( 'IP address', 'fluent-crm-custom-features' ), 'value' => $row->ip ],
+					[ 'name' => __( 'User agent', 'fluent-crm-custom-features' ), 'value' => $row->user_agent ],
+					[ 'name' => __( 'Clicked at (UTC)', 'fluent-crm-custom-features' ), 'value' => $row->clicked_at_utc ],
+				],
+			];
+		}
+
+		return [ 'data' => $data, 'done' => count( $data ) < self::EXPORT_PAGE ];
+	}
+
+	/**
+	 * @return array{items_removed: bool, items_retained: bool, messages: array, done: bool}
+	 */
+	public function eraseClicks( string $email, int $page = 1 ): array {
+		global $wpdb;
+
+		$contact_id = $this->contactId( $email );
+		$table      = self::tableName();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$had_clicks = $contact_id && (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE subscriber_id = %d", $contact_id ) ) > 0;
+
+		$this->forgetContacts( [ $contact_id ] );
+
+		return [
+			'items_removed'  => $had_clicks,
+			'items_retained' => false,
+			'messages'       => [],
+			'done'           => true,
+		];
+	}
+
+	private function contactId( string $email ): int {
+		global $wpdb;
+
+		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}fc_subscribers WHERE email = %s", $email ) );
 	}
 
 	public static function tableName(): string {
@@ -89,7 +205,7 @@ class ClickLog {
 			$user_agent = mb_substr( sanitize_text_field( $user_agent ), 0, 255 );
 
 			$ip = '';
-			if ( function_exists( 'FluentCrm' ) && function_exists( 'fluentCrmWillAnonymizeIp' ) ) {
+			if ( function_exists( 'FluentCrm' ) && function_exists( 'fluentCrmWillAnonymizeIp' ) && function_exists( 'fluentCrmWillTrackIp' ) && fluentCrmWillTrackIp() ) {
 				$ip = (string) FluentCrm( 'request' )->getIp( fluentCrmWillAnonymizeIp() );
 			}
 
