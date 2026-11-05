@@ -184,6 +184,21 @@ lt_check( 'siteTimeNotBefore: Berlin, first 02:30 of the fold stays 02:30', '202
 lt_check( 'siteTimeNotBefore: Berlin, second 02:30 becomes 03:00', '2026-10-25 03:00:00' === $berlin_second, $berlin_second );
 lt_check( 'siteTimeNotBefore: Berlin, after the fold is its wall time', '2026-10-25 03:30:00' === $berlin_after, $berlin_after );
 
+// Denver repeats 01:00-02:00 on 2026-11-01. A Helsinki 8:00-11:00 window ends at 09:00 UTC, when that hour ends.
+$helsinki      = new DateTimeZone( 'Europe/Helsinki' );
+$hel_not_before = lt_at( '2026-10-31 12:00', 'UTC' );
+$hel_start     = SendTime::sendOn( '2026-11-01', $helsinki, 8 * 60, $hel_not_before );
+$hel_end       = SendTime::sendOn( '2026-11-01', $helsinki, 11 * 60, $hel_not_before );
+$hel_late      = SendTime::siteTimeInWindow( SendTime::sendOn( '2026-11-01', $helsinki, 10 * 60 + 30, $hel_not_before ), $hel_start, $hel_end, $denver );
+lt_check( 'siteTimeInWindow: a send in the repeated hour that would pass its window goes just before the clocks went back', '2026-11-01 01:59:59' === $hel_late, $hel_late );
+$hel_early     = SendTime::siteTimeInWindow( SendTime::sendOn( '2026-11-01', $helsinki, 9 * 60, $hel_not_before ), $hel_start, $hel_end, $denver );
+lt_check( 'siteTimeInWindow: outside the repeated hour it is the wall time', '2026-11-01 01:00:00' === $hel_early, $hel_early );
+$kyiv_later    = lt_at( '2026-11-01 08:30', 'UTC' );
+$wide_end      = lt_at( '2026-11-01 10:00', 'UTC' );
+lt_check( 'siteTimeInWindow: a window that outlasts the repeated hour waits for it to end', '2026-11-01 02:00:00' === SendTime::siteTimeInWindow( $kyiv_later, lt_at( '2026-11-01 06:00', 'UTC' ), $wide_end, $denver ) );
+$narrow_start  = lt_at( '2026-11-01 08:10', 'UTC' );
+lt_check( 'siteTimeInWindow: a window wholly inside the repeated hour waits for it to end', '2026-11-01 02:00:00' === SendTime::siteTimeInWindow( $kyiv_later, $narrow_start, lt_at( '2026-11-01 08:50', 'UTC' ), $denver ) );
+
 $zone_constants = ( new ReflectionClass( SendTime::class ) )->getConstants();
 $unusable_zones = [];
 array_walk_recursive( $zone_constants, static function ( $value, $key ) use ( &$unusable_zones ) {
@@ -858,6 +873,19 @@ if ( $has_abilities ) {
 	$kept    = array_filter( $rows_of( (int) $paused->id ), static function ( $row ) use ( $paused_at ) { return 'scheduled' === $row->status && $row->scheduled_at === $paused_at; } );
 	lt_check( 'MCP resume of a local-time campaign resumes it and keeps every email\'s time', is_array( $resumed ) && ! empty( $resumed['ok'] ) && 'working' === $reload( $paused )->status && count( $kept ) === count( $contact_ids ), is_wp_error( $resumed ) ? $resumed->get_error_message() : [ 'status' => $reload( $paused )->status, 'kept' => count( $kept ) ] );
 
+	$mcp_throw_campaign = $make_campaign( 'mcp-throw', gmdate( 'Y-m-d H:i:s', $now + DAY_IN_SECONDS ), $tag_id, [ 'date' => gmdate( 'Y-m-d', $now + DAY_IN_SECONDS ), 'anchor' => gmdate( 'Y-m-d H:i:s', $now + DAY_IN_SECONDS ), 'generation' => wp_generate_uuid4() ], 'paused' );
+	$mcp_throw          = static function ( $query ) {
+		if ( 0 === stripos( ltrim( $query ), 'UPDATE' ) && false !== strpos( $query, 'fc_campaigns' ) ) {
+			throw new RuntimeException( 'simulated database failure' );
+		}
+		return $query;
+	};
+	add_filter( 'query', $mcp_throw );
+	$mcp_result = call_user_func( $args['execute_callback'], [ 'campaign_id' => (int) $mcp_throw_campaign->id, 'action' => 'resume' ] );
+	remove_filter( 'query', $mcp_throw );
+	lt_check( 'MCP resume: an exception becomes a WP_Error with an error ID, and does not show its message', is_wp_error( $mcp_result ) && ! empty( $mcp_result->get_error_data()['error_id'] ) && false === strpos( $mcp_result->get_error_message(), 'simulated' ), is_wp_error( $mcp_result ) ? $mcp_result->get_error_message() : 'no WP_Error' );
+	Campaign::withoutGlobalScope( 'type' )->where( 'id', $mcp_throw_campaign->id )->update( [ 'status' => 'archived' ] );
+
 	$allowed = call_user_func( $args['execute_callback'], [ 'campaign_id' => (int) $plain->id, 'action' => 'resume' ] );
 	lt_check( 'control: MCP resume of a plain campaign still reaches FluentCRM', ! is_wp_error( $allowed ) && 'working' === $reload( $plain )->status, is_wp_error( $allowed ) ? $allowed->get_error_message() : $reload( $plain )->status );
 }
@@ -959,6 +987,17 @@ lt_check( 'ClickLog: the privacy exporter is registered and returns the clicks',
 $erased = $click_log->eraseClicks( $click_email );
 lt_check( 'ClickLog: the privacy eraser is registered and removes the clicks', isset( apply_filters( 'wp_privacy_personal_data_erasers', [] )['customcrm-email-clicks'] ) && $erased['items_removed'] && ! $count_clicks(), count( $count_clicks() ) );
 lt_check( 'ClickLog: the eraser also removes the contact\'s local-time records', 0 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . AssignmentLog::table() . ' WHERE subscriber_id = %d', $click_row->subscriber_id ) ) );
+
+// A failed delete is reported, not called done.
+$bad_delete = static function ( $query ) {
+	return 0 === stripos( ltrim( $query ), 'DELETE' ) && false !== strpos( $query, ClickLog::tableName() ) ? 'DELETE FROM lt_table_that_does_not_exist' : $query;
+};
+add_filter( 'query', $bad_delete );
+$wpdb->suppress_errors( true );
+$erase_failed = $click_log->eraseClicks( $click_email );
+$wpdb->suppress_errors( false );
+remove_filter( 'query', $bad_delete );
+lt_check( 'ClickLog: a failed erase says data was retained', true === $erase_failed['items_retained'] && false === $erase_failed['items_removed'] && [] !== $erase_failed['messages'], $erase_failed );
 
 $url_data            = UrlStores::getRowByShort( $short );
 $url_data->url_token = substr( $click_row->email_hash, 0, 8 );

@@ -879,7 +879,15 @@ class LocalTimeSending {
 				$plan = self::getPlan( $campaign_id );
 
 				if ( $plan['enabled'] && '' !== $plan['date'] ) {
-					$resumed = self::resumeKeepingTimes( $campaign_id );
+					// This skips FluentCRM's callback, so it also skips that callback's error handling.
+					try {
+						$resumed = self::resumeKeepingTimes( $campaign_id );
+					} catch ( \Throwable $e ) {
+						$error_id = substr( md5( uniqid( 'gk_lt_mcp_', true ) ), 0, 12 );
+						error_log( 'CustomCRM local time: MCP resume failed [' . $error_id . '] for campaign ' . $campaign_id . ': ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+
+						return new \WP_Error( 'failed', __( 'The campaign could not be resumed because of an internal error. Quote the error_id to the site administrator.', 'fluent-crm-custom-features' ), [ 'error_id' => $error_id ] );
+					}
 
 					// Not paused (or gone): FluentCRM's own handler returns the right error.
 					if ( null !== $resumed ) {

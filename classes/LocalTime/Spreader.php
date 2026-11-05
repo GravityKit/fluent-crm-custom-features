@@ -189,11 +189,18 @@ final class Spreader {
 		$holdout = SendTime::isHoldout( $context['campaign_id'], $subscriber_id, $context['holdout'] );
 
 		if ( $holdout ) {
-			$slot = null;
-			$send = SendTime::sendOn( $context['date'], $context['site_zone'], $context['window_start'], $context['not_before'] );
+			$slot      = null;
+			$send      = SendTime::sendOn( $context['date'], $context['site_zone'], $context['window_start'], $context['not_before'] );
+			$site_time = SendTime::siteTimeNotBefore( $send, $context['site_zone'] );
 		} else {
-			$slot = SendTime::slotMinutes( $context['campaign_id'], $subscriber_id, $context['window_start'], $context['window_end'] );
-			$send = SendTime::sendOn( $context['date'], $resolved['zone'], $slot, $context['not_before'] );
+			$slot      = SendTime::slotMinutes( $context['campaign_id'], $subscriber_id, $context['window_start'], $context['window_end'] );
+			$send      = SendTime::sendOn( $context['date'], $resolved['zone'], $slot, $context['not_before'] );
+			$site_time = SendTime::siteTimeInWindow(
+				$send,
+				SendTime::sendOn( $context['date'], $resolved['zone'], $context['window_start'], $context['not_before'] ),
+				SendTime::sendOn( $context['date'], $resolved['zone'], $context['window_end'], $context['not_before'] ),
+				$context['site_zone']
+			);
 		}
 
 		return [
@@ -205,7 +212,7 @@ final class Spreader {
 			'slot_minutes'      => $slot,
 			'holdout'           => $holdout ? 1 : 0,
 			'intended_at_utc'   => $send->setTimezone( $context['utc'] )->format( 'Y-m-d H:i:s' ),
-			'site_scheduled_at' => SendTime::siteTimeNotBefore( $send, $context['site_zone'] ),
+			'site_scheduled_at' => $site_time,
 		];
 	}
 

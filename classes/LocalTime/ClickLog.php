@@ -34,22 +34,32 @@ class ClickLog {
 	 * A deleted contact leaves no clicks or local-time records behind.
 	 *
 	 * @param int[] $contact_ids FluentCRM contact IDs.
+	 *
+	 * @return bool False if a delete failed.
 	 */
-	public function forgetContacts( $contact_ids ): void {
+	public function forgetContacts( $contact_ids ): bool {
 		global $wpdb;
 
 		$contact_ids = array_filter( array_map( 'intval', (array) $contact_ids ) );
 
 		if ( ! $contact_ids ) {
-			return;
+			return true;
 		}
 
+		$ok           = true;
 		$placeholders = implode( ',', array_fill( 0, count( $contact_ids ), '%d' ) );
 
 		foreach ( [ self::tableName(), AssignmentLog::table() ] as $table ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			$wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE subscriber_id IN ({$placeholders})", $contact_ids ) );
+			$deleted = $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE subscriber_id IN ({$placeholders})", $contact_ids ) );
+
+			if ( false === $deleted ) {
+				$ok = false;
+				$this->reportOnce( 'deleting contact records failed: ' . $wpdb->last_error );
+			}
 		}
+
+		return $ok;
 	}
 
 	/**
@@ -125,12 +135,12 @@ class ClickLog {
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$had_clicks = $contact_id && (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE subscriber_id = %d", $contact_id ) ) > 0;
 
-		$this->forgetContacts( [ $contact_id ] );
+		$erased = $this->forgetContacts( [ $contact_id ] );
 
 		return [
-			'items_removed'  => $had_clicks,
-			'items_retained' => false,
-			'messages'       => [],
+			'items_removed'  => $erased && $had_clicks,
+			'items_retained' => ! $erased,
+			'messages'       => $erased ? [] : [ __( 'Campaign email clicks could not be erased because of a database error.', 'fluent-crm-custom-features' ) ],
 			'done'           => true,
 		];
 	}
@@ -226,15 +236,15 @@ class ClickLog {
 			);
 
 			if ( false === $inserted ) {
-				$this->reportOnce( $wpdb->last_error );
+				$this->reportOnce( 'click not logged: ' . $wpdb->last_error );
 			}
 		} catch ( \Throwable $e ) {
-			$this->reportOnce( $e->getMessage() );
+			$this->reportOnce( 'click not logged: ' . $e->getMessage() );
 		}
 	}
 
 	/**
-	 * One log line per request, so a broken table cannot flood the error log.
+	 * One log line per request, so a broken table cannot flood the error log. The message says what failed.
 	 */
 	private function reportOnce( string $message ): void {
 		static $reported = false;
@@ -244,6 +254,6 @@ class ClickLog {
 		}
 
 		$reported = true;
-		error_log( 'CustomCRM ClickLog: click not logged: ' . $message ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+		error_log( 'CustomCRM ClickLog: ' . $message ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 	}
 }

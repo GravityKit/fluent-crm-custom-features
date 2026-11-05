@@ -505,24 +505,68 @@ final class SendTime {
 		$wall      = $local->format( 'Y-m-d H:i:s' );
 		$timestamp = $instant->getTimestamp();
 
-		// Read from the transitions: PHP parses a repeated wall time as the first pass west of
-		// Greenwich but as the second pass in zones such as Europe/Berlin.
+		$fold = self::repeatedHour( $timestamp, $site );
+
+		return $fold ? gmdate( 'Y-m-d H:i:s', $fold['ends'] + $fold['offset_before'] ) : $wall;
+	}
+
+	/**
+	 * Like siteTimeNotBefore(), for a send that must stay inside its window. The repeated hour cannot
+	 * be stored, so a send in it normally waits until that hour ends. If that would pass the window's
+	 * end, it goes in the last second before the clocks went back, when that is inside the window. A
+	 * window that lies wholly inside the repeated hour has no time that can be stored, so it waits.
+	 *
+	 * @param DateTimeImmutable $send         When the row should go.
+	 * @param DateTimeImmutable $window_start When the recipient's window opens.
+	 * @param DateTimeImmutable $window_end   When it closes.
+	 * @param DateTimeZone      $site         The site's zone.
+	 *
+	 * @return string Site time, Y-m-d H:i:s.
+	 */
+	public static function siteTimeInWindow( DateTimeImmutable $send, DateTimeImmutable $window_start, DateTimeImmutable $window_end, DateTimeZone $site ): string {
+		$fold = self::repeatedHour( $send->getTimestamp(), $site );
+
+		if ( ! $fold || $fold['ends'] < $window_end->getTimestamp() ) {
+			return self::siteTimeNotBefore( $send, $site );
+		}
+
+		$last_first_pass = $fold['starts'] - 1;
+
+		if ( $last_first_pass < $window_start->getTimestamp() ) {
+			return self::siteTimeNotBefore( $send, $site );
+		}
+
+		return gmdate( 'Y-m-d H:i:s', $last_first_pass + $fold['offset_before'] );
+	}
+
+	/**
+	 * The repeated hour $timestamp falls in the second pass of, when clocks went back. Read from the
+	 * transitions: PHP parses a repeated wall time as the first pass west of Greenwich but as the
+	 * second pass in zones such as Europe/Berlin.
+	 *
+	 * @return array{starts: int, ends: int, offset_before: int}|null `starts` is when the clocks went back, `ends` when the repeat ends.
+	 */
+	private static function repeatedHour( int $timestamp, DateTimeZone $site ): ?array {
 		$transitions = $site->getTransitions( $timestamp - 2 * 86400, $timestamp );
 		$count       = is_array( $transitions ) ? count( $transitions ) : 0;
 
 		if ( $count < 2 ) {
-			return $wall;
+			return null;
 		}
 
 		$latest    = $transitions[ $count - 1 ];
 		$previous  = $transitions[ $count - 2 ];
 		$went_back = $previous['offset'] - $latest['offset'];
 
-		if ( $went_back > 0 && $timestamp < $latest['ts'] + $went_back ) {
-			return gmdate( 'Y-m-d H:i:s', $latest['ts'] + $previous['offset'] );
+		if ( $went_back <= 0 || $timestamp >= $latest['ts'] + $went_back ) {
+			return null;
 		}
 
-		return $wall;
+		return [
+			'starts'        => $latest['ts'],
+			'ends'          => $latest['ts'] + $went_back,
+			'offset_before' => $previous['offset'],
+		];
 	}
 
 	/**
