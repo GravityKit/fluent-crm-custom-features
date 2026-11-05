@@ -280,6 +280,8 @@ class LocalTimeSending {
 	private function run(): void {
 		global $wpdb;
 
+		$wpdb->last_error = '';
+
 		$campaign_ids = $wpdb->get_col( $wpdb->prepare(
 			"SELECT c.id FROM {$wpdb->prefix}fc_campaigns c
 			INNER JOIN {$wpdb->prefix}fc_meta m ON m.object_id = c.id AND m.object_type = %s AND m.`key` = %s

@@ -32,6 +32,11 @@ class ClickLog {
 
 	private const SWEEP_SECONDS = 300;
 
+	/**
+	 * Least time between cleanups, since each one scans both tables.
+	 */
+	private const SWEEP_GAP_SECONDS = 60;
+
 	public function register(): void {
 		add_action( 'fluent_crm/email_url_clicked', [ $this, 'logClick' ], 10, 2 );
 		add_action( 'fluentcrm_before_subscribers_deleted', [ $this, 'forgetContacts' ] );
@@ -47,11 +52,20 @@ class ClickLog {
 	private function sweepIfNeeded(): void {
 		global $wpdb;
 
-		$failed_at = (int) get_option( self::SWEEP_OPTION );
+		$sweep = get_option( self::SWEEP_OPTION );
 
-		if ( ! $failed_at ) {
+		if ( ! is_array( $sweep ) || empty( $sweep['failed_at'] ) ) {
 			return;
 		}
+
+		$swept_at = isset( $sweep['swept_at'] ) ? (int) $sweep['swept_at'] : 0;
+
+		if ( time() - $swept_at < self::SWEEP_GAP_SECONDS ) {
+			return;
+		}
+
+		$sweep['swept_at'] = time();
+		update_option( self::SWEEP_OPTION, $sweep, true );
 
 		$ok = true;
 
@@ -61,7 +75,7 @@ class ClickLog {
 			$ok      = $ok && false !== $deleted;
 		}
 
-		if ( $ok && time() - $failed_at > self::SWEEP_SECONDS ) {
+		if ( $ok && time() - (int) $sweep['failed_at'] > self::SWEEP_SECONDS ) {
 			delete_option( self::SWEEP_OPTION );
 		}
 	}
@@ -96,7 +110,7 @@ class ClickLog {
 		}
 
 		if ( ! $ok ) {
-			update_option( self::SWEEP_OPTION, time(), true );
+			update_option( self::SWEEP_OPTION, [ 'failed_at' => time(), 'swept_at' => 0 ], true );
 		}
 
 		return $ok;
@@ -133,6 +147,10 @@ class ClickLog {
 		global $wpdb;
 
 		$contact_id = $this->contactId( $email );
+
+		if ( null === $contact_id ) {
+			return new \WP_Error( 'customcrm_click_export_failed', __( 'Campaign email clicks could not be read because of a database error.', 'fluent-crm-custom-features' ) );
+		}
 
 		if ( ! $contact_id ) {
 			return [ 'data' => [], 'done' => true ];
@@ -183,7 +201,7 @@ class ClickLog {
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$had_clicks = $contact_id && (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE subscriber_id = %d", $contact_id ) ) > 0;
 
-		$erased = $this->forgetContacts( [ $contact_id ] );
+		$erased = null !== $contact_id && $this->forgetContacts( [ $contact_id ] );
 
 		return [
 			'items_removed'  => $erased && $had_clicks,
@@ -194,10 +212,17 @@ class ClickLog {
 		];
 	}
 
-	private function contactId( string $email ): int {
+	/**
+	 * @return int|null The contact's ID, 0 when there is none, or null on a database error.
+	 */
+	private function contactId( string $email ): ?int {
 		global $wpdb;
 
-		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}fc_subscribers WHERE email = %s", $email ) );
+		$wpdb->last_error = '';
+
+		$id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}fc_subscribers WHERE email = %s", $email ) );
+
+		return '' !== (string) $wpdb->last_error ? null : (int) $id;
 	}
 
 	public static function tableName(): string {

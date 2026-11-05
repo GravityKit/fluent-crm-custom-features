@@ -56,6 +56,8 @@ class AssignmentLog {
   KEY email_id (email_id)
 ) {$charset};";
 
+		$wpdb->last_error = '';
+
 		dbDelta( $sql );
 
 		if ( '' !== (string) $wpdb->last_error ) {
