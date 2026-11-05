@@ -682,7 +682,31 @@ $slow_result = Spreader::spread( $reload( $slow_campaign ), LocalTimeSending::ge
 remove_filter( 'query', $slow_filter );
 $slow_left   = count( array_filter( $rows_of( (int) $slow_campaign->id ), static function ( $row ) use ( $slow_anchor ) { return $row->scheduled_at === $slow_anchor; } ) );
 lt_check( 'spread: a write that crosses the deadline returns false and leaves the rows for the fallback', false === $slow_result && $slow_left === count( $contact_ids ), [ $slow_result, $slow_left ] );
+$slow_records = count( AssignmentLog::forCampaign( (int) $slow_campaign->id ) );
+lt_call( $sending, 'fallBack', $reload( $slow_campaign ), LocalTimeSending::getPlan( (int) $slow_campaign->id ), 'test reason' );
+lt_check( 'fallback: records of rows that never got their local time are removed', $slow_records > 0 && ! AssignmentLog::forCampaign( (int) $slow_campaign->id ), [ $slow_records, count( AssignmentLog::forCampaign( (int) $slow_campaign->id ) ) ] );
 Campaign::withoutGlobalScope( 'type' )->where( 'id', $slow_campaign->id )->update( [ 'status' => 'archived' ] );
+
+// FluentCRM saves the campaign before its rows, and a row update can fail: rows left at a time
+// the plan moved away from are moved before spreading, so the spread does not report 0 of them.
+$left_old      = gmdate( 'Y-m-d H:i:s', $now + 9 * DAY_IN_SECONDS );
+$left_date     = gmdate( 'Y-m-d', $now + 9 * DAY_IN_SECONDS );
+$left_anchor   = SendTime::siteTimeNotBefore( SendTime::firstWindowOpens( $left_date, 8 * 60 ), $site );
+$left_campaign = $make_campaign( 'replan-leftover', $left_anchor, $tag_id, [
+	'date'       => $left_date,
+	'picked_at'  => $left_old,
+	'anchor'     => $left_anchor,
+	'generation' => wp_generate_uuid4(),
+	'moved_from' => [ $left_old, $fb_anchor ],
+], 'scheduled' );
+foreach ( array_values( $contact_ids ) as $left_id ) {
+	$wpdb->insert( "{$p}fc_campaign_emails", [ 'campaign_id' => $left_campaign->id, 'email_type' => 'campaign', 'subscriber_id' => $left_id, 'email_address' => "{$marker}-left-{$left_id}@gravitykit-lt.dev", 'status' => 'scheduled', 'scheduled_at' => $left_old, 'created_at' => $ts, 'updated_at' => $ts ] );
+}
+$sending->advance( (int) $left_campaign->id );
+$left_rows = $rows_of( (int) $left_campaign->id );
+$left_stuck = count( array_filter( $left_rows, static function ( $row ) use ( $left_old, $left_anchor ) { return $row->scheduled_at === $left_old || $row->scheduled_at === $left_anchor; } ) );
+lt_check( 're-plan: rows left at the old time are spread, not skipped', 0 === $left_stuck && count( $contact_ids ) === count( AssignmentLog::forCampaign( (int) $left_campaign->id ) ), [ $left_stuck, (string) $meta( (int) $left_campaign->id, LocalTimeSending::RESULT_META ) ] );
+Campaign::withoutGlobalScope( 'type' )->where( 'id', $left_campaign->id )->update( [ 'status' => 'archived' ] );
 
 /*
  * 8b. An exception in one campaign's step never escapes the tick, never stops the other campaigns,

@@ -307,7 +307,7 @@ final class Spreader {
 	 * half-finished spread keeps the records of rows it already moved; those rows are not selected
 	 * again.
 	 */
-	private static function forgetStale( int $campaign_id, string $anchor ): bool {
+	public static function forgetStale( int $campaign_id, string $anchor ): bool {
 		global $wpdb;
 
 		$log    = AssignmentLog::table();

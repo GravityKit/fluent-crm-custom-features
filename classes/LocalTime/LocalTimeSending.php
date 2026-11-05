@@ -78,9 +78,10 @@ class LocalTimeSending {
 	 * The campaign's plan, with defaults filled in. `start`/`end`: minutes after local midnight;
 	 * `holdout`: percent sent on the normal schedule; `date`: local delivery date; `picked_at`,
 	 * `anchor`, `fallback_at`: site times (picked, set as `scheduled_at`, fallen back to);
-	 * `generation`: unique per scheduling attempt.
+	 * `generation`: unique per scheduling attempt; `moved_from`: site times a re-plan moved this
+	 * attempt's rows away from, kept so rows still there are moved before they are spread.
 	 *
-	 * @return array{enabled: bool, start: int, end: int, holdout: int, date: string, picked_at: string, anchor: string, generation: string, fallback_at: string}
+	 * @return array{enabled: bool, start: int, end: int, holdout: int, date: string, picked_at: string, anchor: string, generation: string, fallback_at: string, moved_from: string[]}
 	 */
 	public static function getPlan( int $campaign_id ): array {
 		$plan = fluentcrm_get_campaign_meta( $campaign_id, self::PLAN_META, true );
@@ -96,6 +97,7 @@ class LocalTimeSending {
 			'anchor'      => isset( $plan['anchor'] ) ? (string) $plan['anchor'] : '',
 			'generation'  => isset( $plan['generation'] ) ? (string) $plan['generation'] : '',
 			'fallback_at' => isset( $plan['fallback_at'] ) ? (string) $plan['fallback_at'] : '',
+			'moved_from'  => isset( $plan['moved_from'] ) && is_array( $plan['moved_from'] ) ? array_values( array_map( 'strval', $plan['moved_from'] ) ) : [],
 		];
 	}
 
@@ -451,7 +453,7 @@ class LocalTimeSending {
 			return;
 		}
 
-		$moved = Spreader::spread( $campaign, $plan );
+		$moved = $this->moveReplannedRows( $campaign_id, $plan ) ? Spreader::spread( $campaign, $plan ) : false;
 
 		if ( false === $moved ) {
 			if ( $this->secondsLeft( $plan ) < self::MIN_MARGIN_SECONDS ) {
@@ -519,7 +521,8 @@ class LocalTimeSending {
 			return;
 		}
 
-		$plan = $this->startGeneration( $plan, $date, $observed );
+		$plan               = $this->startGeneration( $plan, $date, $observed );
+		$plan['moved_from'] = [ $observed, $old_anchor ];
 		self::savePlan( $campaign_id, $plan );
 		fluentcrm_delete_campaign_meta( $campaign_id, self::DONE_META );
 
@@ -533,19 +536,9 @@ class LocalTimeSending {
 			return;
 		}
 
-		// Released rows hold the new time; rows still being queued hold the old anchor.
-		$updated = $wpdb->query( $wpdb->prepare(
-			"UPDATE {$wpdb->prefix}fc_campaign_emails SET scheduled_at = %s
-			WHERE campaign_id = %d AND status IN ('scheduling', 'scheduled') AND scheduled_at IN (%s, %s)",
-			$plan['anchor'],
-			$campaign_id,
-			$observed,
-			$old_anchor
-		) );
-
-		if ( false === $updated ) {
-			error_log( 'CustomCRM local time: re-planning emails of campaign ' . $campaign_id . ' failed: ' . $wpdb->last_error );
-		}
+		// If this fails, or FluentCRM writes its rows after this runs (it saves the campaign first),
+		// advance() moves what is left before it spreads.
+		$this->moveReplannedRows( $campaign_id, $plan );
 
 		$this->record( $campaign_id, sprintf( 'planned again: the send time was changed to %s; delivering on %s; FluentCRM starts at %s', $observed, $date, $plan['anchor'] ) );
 	}
@@ -588,7 +581,12 @@ class LocalTimeSending {
 				->where( 'scheduled_at', $plan['anchor'] )
 				->update( [ 'scheduled_at' => $fallback_at ] );
 
+			$this->moveReplannedRows( $campaign_id, $plan );
+
 			$updated = $this->moveAnchorRows( $campaign_id, $plan['anchor'], $fallback_at );
+
+			// Rows that were not given their local time keep no record saying they were.
+			Spreader::forgetStale( $campaign_id, $plan['anchor'] );
 		} finally {
 			Helper::deleteDbLock( $lock_key, $token );
 		}
@@ -616,11 +614,42 @@ class LocalTimeSending {
 			return;
 		}
 
+		$this->moveReplannedRows( (int) $campaign->id, $plan );
 		$this->moveAnchorRows( (int) $campaign->id, $plan['anchor'], $plan['fallback_at'] );
 
 		if ( 'processing' === $campaign->status ) {
 			( new CampaignProcessor( (int) $campaign->id ) )->processEmails();
 		}
+	}
+
+	/**
+	 * Move rows still at a time this attempt was re-planned from to its anchor.
+	 *
+	 * @return bool False on a database error; the rows stay where they are for the next try.
+	 */
+	private function moveReplannedRows( int $campaign_id, array $plan ): bool {
+		global $wpdb;
+
+		$from = array_values( array_diff( array_unique( array_filter( $plan['moved_from'] ) ), [ $plan['anchor'] ] ) );
+
+		if ( ! $from ) {
+			return true;
+		}
+
+		$placeholders = implode( ',', array_fill( 0, count( $from ), '%s' ) );
+
+		$updated = $wpdb->query( $wpdb->prepare(
+			"UPDATE {$wpdb->prefix}fc_campaign_emails SET scheduled_at = %s
+			WHERE campaign_id = %d AND status IN ('scheduling', 'scheduled') AND scheduled_at IN ($placeholders)", // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+			array_merge( [ $plan['anchor'], $campaign_id ], $from )
+		) );
+
+		if ( false === $updated ) {
+			error_log( 'CustomCRM local time: re-planning emails of campaign ' . $campaign_id . ' failed: ' . $wpdb->last_error ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			return false;
+		}
+
+		return true;
 	}
 
 	/**
@@ -770,6 +799,7 @@ class LocalTimeSending {
 		$plan['anchor']      = SendTime::siteTimeNotBefore( SendTime::firstWindowOpens( $date, $plan['start'] ), wp_timezone() );
 		$plan['generation']  = wp_generate_uuid4();
 		$plan['fallback_at'] = '';
+		$plan['moved_from']  = [];
 
 		return $plan;
 	}
@@ -783,6 +813,7 @@ class LocalTimeSending {
 		$plan['anchor']      = '';
 		$plan['generation']  = '';
 		$plan['fallback_at'] = '';
+		$plan['moved_from']  = [];
 
 		return $plan;
 	}
