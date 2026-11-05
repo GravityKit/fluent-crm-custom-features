@@ -73,6 +73,12 @@ function customcrm_core_is_available() {
 		&& class_exists( '\\FluentCrm\\App\\Services\\Funnel\\Actions\\WaitTimeAction' );
 }
 
+// Must be in place before the first ability is registered. WordPress registers them the first time
+// anything asks for one, and the MCP adapter does that on `init`, before the priority-99 callback
+// below runs, so a filter added there never sees FluentCRM's abilities. It does nothing unless the
+// ability is `fluent-crm/change-campaign-status`.
+add_filter( 'wp_register_ability_args', [ \CustomCRM\LocalTime\LocalTimeSending::class, 'guardMcpResume' ], 10, 2 );
+
 add_action(
 	'init',
 	function () {
@@ -133,6 +139,17 @@ add_action(
 		// FluentCRM 3.2.0 writes theme font sizes into email as rem, which follows the mail client's
 		// root size rather than the email's. Converts them to px so every client renders the same.
 		( new \CustomCRM\Integrations\EmailRemToPx() )->register();
+
+		// Campaigns set to "Deliver in each person's local time" in the schedule step.
+		( new \CustomCRM\LocalTime\LocalTimeSending() )->register();
+		( new \CustomCRM\LocalTime\LocalTimePanel() )->register();
+		( new \CustomCRM\LocalTime\BrowserTimezone() )->register();
+		\CustomCRM\LocalTime\AssignmentLog::ensureTable();
+
+		// Every campaign email click, one row each, with user agent and IP.
+		$click_log = new \CustomCRM\LocalTime\ClickLog();
+		$click_log->ensureTable();
+		$click_log->register();
 
 		// Contact and company enrichment via external providers (PDL, etc.).
 		( new \CustomCRM\Actions\EnrichContactAction() );
