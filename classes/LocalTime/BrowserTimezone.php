@@ -65,7 +65,7 @@ class BrowserTimezone {
 			return;
 		}
 
-		$zone = sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ) );
+		$zone = SendTime::currentZoneName( sanitize_text_field( wp_unslash( $_COOKIE[ self::COOKIE ] ) ) );
 
 		if ( ! SendTime::isZoneName( $zone ) || get_user_meta( $user->ID, self::USER_META, true ) === $zone ) {
 			return;

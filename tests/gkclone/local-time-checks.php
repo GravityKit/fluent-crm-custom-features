@@ -104,7 +104,10 @@ lt_check( 'sendOn for 2,000 random dates and zones: on the date, at the slot, ne
 
 $fallback = new DateTimeZone( 'America/Denver' );
 $resolve  = [
-	[ 'Asia/Calcutta', null, null, 'Asia/Calcutta', 'contact', 'an older alias is still a zone' ],
+	[ 'Asia/Calcutta', null, null, 'Asia/Kolkata', 'contact', 'an older name becomes its current zone' ],
+	[ 'US/Pacific', 'GB', null, 'America/Los_Angeles', 'contact', 'an older US name becomes its current zone' ],
+	[ 'leapseconds', 'US', null, 'America/New_York', 'country', 'a zone-data file name is not a zone' ],
+	[ 'tzdata.zi', null, null, 'America/Denver', 'site', 'a zone-data file name with nothing else falls back to the site zone' ],
 	[ 'Mars/Base', 'US', null, 'America/New_York', 'country', 'an unknown zone with no state falls back to the country' ],
 	[ '', 'us', 'CA', 'America/Los_Angeles', 'state', 'a US state code, lower-case country' ],
 	[ '', 'US', 'california', 'America/Los_Angeles', 'state', 'a US state name, any case' ],
@@ -168,6 +171,34 @@ $plain  = SendTime::siteTimeNotBefore( new DateTimeImmutable( '2026-11-05 18:00:
 lt_check( 'siteTimeNotBefore: first 01:30 of the fold stays 01:30', '2026-11-01 01:30:00' === $first, $first );
 lt_check( 'siteTimeNotBefore: second 01:30 of the fold becomes 02:00, never claimable in the first pass', '2026-11-01 02:00:00' === $second, $second );
 lt_check( 'siteTimeNotBefore: an ordinary instant is its wall time', '2026-11-05 11:00:00' === $plain, $plain );
+
+// PHP parses a repeated Berlin time as the second pass, so this needs the same answers as Denver.
+$berlin        = new DateTimeZone( 'Europe/Berlin' );
+$berlin_first  = SendTime::siteTimeNotBefore( new DateTimeImmutable( '2026-10-25 00:30:00 UTC' ), $berlin );
+$berlin_second = SendTime::siteTimeNotBefore( new DateTimeImmutable( '2026-10-25 01:30:00 UTC' ), $berlin );
+$berlin_after  = SendTime::siteTimeNotBefore( new DateTimeImmutable( '2026-10-25 02:30:00 UTC' ), $berlin );
+lt_check( 'siteTimeNotBefore: Berlin, first 02:30 of the fold stays 02:30', '2026-10-25 02:30:00' === $berlin_first, $berlin_first );
+lt_check( 'siteTimeNotBefore: Berlin, second 02:30 becomes 03:00', '2026-10-25 03:00:00' === $berlin_second, $berlin_second );
+lt_check( 'siteTimeNotBefore: Berlin, after the fold is its wall time', '2026-10-25 03:30:00' === $berlin_after, $berlin_after );
+
+$zone_constants = ( new ReflectionClass( SendTime::class ) )->getConstants();
+$unusable_zones = [];
+array_walk_recursive( $zone_constants, static function ( $value, $key ) use ( &$unusable_zones ) {
+	if ( is_string( $value ) && false !== strpos( $value, '/' ) && ! SendTime::isZoneName( $value ) ) {
+		$unusable_zones[] = "{$key} => {$value}";
+	}
+} );
+lt_check( 'every zone in the state, country and old-name maps works on this PHP', ! $unusable_zones, $unusable_zones );
+
+$listed_but_broken = array_values( array_filter( DateTimeZone::listIdentifiers( DateTimeZone::ALL_WITH_BC ), static function ( $name ) {
+	try {
+		new DateTimeZone( $name );
+		return false;
+	} catch ( \Exception $e ) {
+		return SendTime::isZoneName( $name );
+	}
+} ) );
+lt_check( 'isZoneName refuses every listed name that throws', ! $listed_but_broken, $listed_but_broken );
 
 /*
  * Against FluentCRM.
@@ -604,6 +635,55 @@ $sending->advance( (int) $fb_campaign->id );
 $sending->tick();
 lt_check( 'fallback: later advances and ticks send no second email and keep the time', 1 === count( $lt_mail ) && $fb_picked === $reload( $fb_campaign )->scheduled_at, count( $lt_mail ) );
 
+// Another run is still queueing: nothing moves, nothing is marked done, nobody is emailed until it ends.
+$lt_mail       = [];
+$lock_gen      = wp_generate_uuid4();
+$lock_campaign = $make_campaign( 'fallback-locked', $fb_anchor, $tag_id, [
+	'date'       => gmdate( 'Y-m-d', $now + DAY_IN_SECONDS ),
+	'picked_at'  => $fb_picked,
+	'anchor'     => $fb_anchor,
+	'generation' => $lock_gen,
+] );
+$lock_key      = '_fluentcrm_lock_campaign_processing_' . (int) $lock_campaign->id;
+$lock_token    = wp_generate_uuid4();
+$lock_held     = Helper::acquireDbLock( $lock_key, 90, $lock_token );
+$lock_plan     = LocalTimeSending::getPlan( (int) $lock_campaign->id );
+lt_call( $sending, 'fallBack', $reload( $lock_campaign ), $lock_plan, 'test reason' );
+lt_check(
+	'fallback: while another run holds the queueing lock it changes nothing and waits',
+	$lock_held && $fb_anchor === $reload( $lock_campaign )->scheduled_at && '' === LocalTimeSending::getPlan( (int) $lock_campaign->id )['fallback_at'] && $lock_gen !== $meta( (int) $lock_campaign->id, LocalTimeSending::DONE_META ) && ! $lt_mail,
+	[ $lock_held, $reload( $lock_campaign )->scheduled_at, count( $lt_mail ) ]
+);
+Helper::deleteDbLock( $lock_key, $lock_token );
+lt_call( $sending, 'fallBack', $reload( $lock_campaign ), $lock_plan, 'test reason' );
+lt_check( 'fallback: once the lock is free the next try falls back', $fb_picked === $reload( $lock_campaign )->scheduled_at && 1 === count( $lt_mail ), [ $reload( $lock_campaign )->scheduled_at, count( $lt_mail ) ] );
+
+// The deadline is checked again before writes: a slow write near the anchor stops the move.
+$slow_anchor   = gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) + 20 );
+$slow_campaign = $make_campaign( 'spread-deadline', $slow_anchor, $tag_id, [
+	'date'       => gmdate( 'Y-m-d', $now + DAY_IN_SECONDS ),
+	'picked_at'  => $fb_picked,
+	'anchor'     => $slow_anchor,
+	'generation' => wp_generate_uuid4(),
+], 'scheduled' );
+foreach ( array_values( $contact_ids ) as $slow_id ) {
+	$wpdb->insert( "{$p}fc_campaign_emails", [ 'campaign_id' => $slow_campaign->id, 'email_type' => 'campaign', 'subscriber_id' => $slow_id, 'email_address' => "{$marker}-slow-{$slow_id}@gravitykit-lt.dev", 'status' => 'scheduled', 'scheduled_at' => $slow_anchor, 'created_at' => $ts, 'updated_at' => $ts ] );
+}
+$slow_filter = static function ( $query ) {
+	static $slept = false;
+	if ( ! $slept && false !== strpos( $query, AssignmentLog::table() ) && 0 === stripos( ltrim( $query ), 'INSERT' ) ) {
+		$slept = true;
+		sleep( 7 );
+	}
+	return $query;
+};
+add_filter( 'query', $slow_filter );
+$slow_result = Spreader::spread( $reload( $slow_campaign ), LocalTimeSending::getPlan( (int) $slow_campaign->id ) );
+remove_filter( 'query', $slow_filter );
+$slow_left   = count( array_filter( $rows_of( (int) $slow_campaign->id ), static function ( $row ) use ( $slow_anchor ) { return $row->scheduled_at === $slow_anchor; } ) );
+lt_check( 'spread: a write that crosses the deadline returns false and leaves the rows for the fallback', false === $slow_result && $slow_left === count( $contact_ids ), [ $slow_result, $slow_left ] );
+Campaign::withoutGlobalScope( 'type' )->where( 'id', $slow_campaign->id )->update( [ 'status' => 'archived' ] );
+
 /*
  * 8b. An exception in one campaign's step never escapes the tick, never stops the other campaigns,
  * and near the anchor falls the campaign back instead of leaving its rows to go out early.
@@ -831,6 +911,15 @@ $zone_of = static function () use ( $wpdb, $p, $contact_ids ) {
 $_COOKIE[ BrowserTimezone::COOKIE ] = 'Not/AZone';
 ( new BrowserTimezone() )->save( $user );
 lt_check( 'an invalid browser zone is ignored', null === $zone_of(), $zone_of() );
+
+$_COOKIE[ BrowserTimezone::COOKIE ] = 'leapseconds';
+( new BrowserTimezone() )->save( $user );
+lt_check( 'a browser cookie holding a zone-data file name is ignored', null === $zone_of(), $zone_of() );
+
+$_COOKIE[ BrowserTimezone::COOKIE ] = 'Asia/Calcutta';
+( new BrowserTimezone() )->save( $user );
+lt_check( 'an older browser zone name is saved as its current name', 'Asia/Kolkata' === $zone_of(), $zone_of() );
+delete_user_meta( $user->ID, BrowserTimezone::USER_META );
 
 $_COOKIE[ BrowserTimezone::COOKIE ] = 'Europe/Paris';
 ( new BrowserTimezone() )->save( $user );

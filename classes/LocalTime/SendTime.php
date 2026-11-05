@@ -85,10 +85,106 @@ final class SendTime {
 	];
 
 	/**
-	 * Whether a string names a time zone PHP knows, including older aliases like Asia/Calcutta.
+	 * Older zone names mapped to their current ones. PHP on the live server reads the system's zone
+	 * data, which refuses these names even though browsers still report some (Chrome says
+	 * Asia/Calcutta). Made from that system's tzdata.zi: the links it does not accept.
+	 */
+	private const OLD_ZONE_NAMES = [
+		'Africa/Asmera' => 'Africa/Asmara',
+		'America/Argentina/ComodRivadavia' => 'America/Argentina/Catamarca',
+		'America/Buenos_Aires' => 'America/Argentina/Buenos_Aires',
+		'America/Catamarca' => 'America/Argentina/Catamarca',
+		'America/Cordoba' => 'America/Argentina/Cordoba',
+		'America/Fort_Wayne' => 'America/Indiana/Indianapolis',
+		'America/Godthab' => 'America/Nuuk',
+		'America/Indianapolis' => 'America/Indiana/Indianapolis',
+		'America/Jujuy' => 'America/Argentina/Jujuy',
+		'America/Knox_IN' => 'America/Indiana/Knox',
+		'America/Louisville' => 'America/Kentucky/Louisville',
+		'America/Mendoza' => 'America/Argentina/Mendoza',
+		'America/Rosario' => 'America/Argentina/Cordoba',
+		'Antarctica/South_Pole' => 'Antarctica/McMurdo',
+		'Asia/Ashkhabad' => 'Asia/Ashgabat',
+		'Asia/Calcutta' => 'Asia/Kolkata',
+		'Asia/Chungking' => 'Asia/Shanghai',
+		'Asia/Dacca' => 'Asia/Dhaka',
+		'Asia/Katmandu' => 'Asia/Kathmandu',
+		'Asia/Macao' => 'Asia/Macau',
+		'Asia/Rangoon' => 'Asia/Yangon',
+		'Asia/Saigon' => 'Asia/Ho_Chi_Minh',
+		'Asia/Thimbu' => 'Asia/Thimphu',
+		'Asia/Ujung_Pandang' => 'Asia/Makassar',
+		'Asia/Ulan_Bator' => 'Asia/Ulaanbaatar',
+		'Atlantic/Faeroe' => 'Atlantic/Faroe',
+		'Australia/ACT' => 'Australia/Sydney',
+		'Australia/LHI' => 'Australia/Lord_Howe',
+		'Australia/NSW' => 'Australia/Sydney',
+		'Australia/North' => 'Australia/Darwin',
+		'Australia/Queensland' => 'Australia/Brisbane',
+		'Australia/South' => 'Australia/Adelaide',
+		'Australia/Tasmania' => 'Australia/Hobart',
+		'Australia/Victoria' => 'Australia/Melbourne',
+		'Australia/West' => 'Australia/Perth',
+		'Brazil/Acre' => 'America/Rio_Branco',
+		'Brazil/DeNoronha' => 'America/Noronha',
+		'Brazil/East' => 'America/Sao_Paulo',
+		'Brazil/West' => 'America/Manaus',
+		'Canada/Atlantic' => 'America/Halifax',
+		'Canada/Central' => 'America/Winnipeg',
+		'Canada/Eastern' => 'America/Toronto',
+		'Canada/Mountain' => 'America/Edmonton',
+		'Canada/Newfoundland' => 'America/St_Johns',
+		'Canada/Pacific' => 'America/Vancouver',
+		'Canada/Saskatchewan' => 'America/Regina',
+		'Canada/Yukon' => 'America/Whitehorse',
+		'Chile/Continental' => 'America/Santiago',
+		'Chile/EasterIsland' => 'Pacific/Easter',
+		'Europe/Kiev' => 'Europe/Kyiv',
+		'Europe/Uzhgorod' => 'Europe/Kyiv',
+		'Europe/Zaporozhye' => 'Europe/Kyiv',
+		'Mexico/BajaNorte' => 'America/Tijuana',
+		'Mexico/BajaSur' => 'America/Mazatlan',
+		'Mexico/General' => 'America/Mexico_City',
+		'Pacific/Enderbury' => 'Pacific/Kanton',
+		'Pacific/Ponape' => 'Pacific/Pohnpei',
+		'Pacific/Truk' => 'Pacific/Chuuk',
+		'US/Alaska' => 'America/Anchorage',
+		'US/Aleutian' => 'America/Adak',
+		'US/Arizona' => 'America/Phoenix',
+		'US/Central' => 'America/Chicago',
+		'US/East-Indiana' => 'America/Indiana/Indianapolis',
+		'US/Eastern' => 'America/New_York',
+		'US/Hawaii' => 'Pacific/Honolulu',
+		'US/Indiana-Starke' => 'America/Indiana/Knox',
+		'US/Michigan' => 'America/Detroit',
+		'US/Mountain' => 'America/Denver',
+		'US/Pacific' => 'America/Los_Angeles',
+		'US/Samoa' => 'Pacific/Pago_Pago',
+	];
+
+	/**
+	 * Whether a string names a time zone that can be used here. The list alone is not enough: with
+	 * system zone data it also holds file names such as `leapseconds`, and those throw when used.
 	 */
 	public static function isZoneName( $zone ): bool {
-		return is_string( $zone ) && '' !== $zone && in_array( $zone, DateTimeZone::listIdentifiers( DateTimeZone::ALL_WITH_BC ), true );
+		if ( ! is_string( $zone ) || '' === $zone || ! in_array( $zone, DateTimeZone::listIdentifiers( DateTimeZone::ALL_WITH_BC ), true ) ) {
+			return false;
+		}
+
+		try {
+			new DateTimeZone( $zone );
+		} catch ( \Exception $e ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * The current name of a zone, for a name that has been replaced; otherwise the name as given.
+	 */
+	public static function currentZoneName( string $zone ): string {
+		return self::OLD_ZONE_NAMES[ $zone ] ?? $zone;
 	}
 
 	/**
@@ -219,7 +315,7 @@ final class SendTime {
 	 * @return array{zone: DateTimeZone, source: string} `source` is contact, state, country or site.
 	 */
 	public static function resolveZone( $timezone, $country, $state, DateTimeZone $fallback, array $country_names = [] ): array {
-		$timezone = trim( (string) $timezone );
+		$timezone = self::currentZoneName( trim( (string) $timezone ) );
 
 		if ( self::isZoneName( $timezone ) ) {
 			return [
@@ -405,24 +501,24 @@ final class SendTime {
 		$wall      = $local->format( 'Y-m-d H:i:s' );
 		$timestamp = $instant->getTimestamp();
 
-		// PHP resolves an ambiguous wall time to its first occurrence.
-		$first = new DateTimeImmutable( $wall, $site );
-
-		if ( $first->getTimestamp() >= $timestamp ) {
-			return $wall;
-		}
-
+		// Read from the transitions: PHP parses a repeated wall time as the first pass west of
+		// Greenwich but as the second pass in zones such as Europe/Berlin.
 		$transitions = $site->getTransitions( $timestamp - 2 * 86400, $timestamp );
 		$count       = is_array( $transitions ) ? count( $transitions ) : 0;
 
-		if ( $count >= 2 && $transitions[ $count - 1 ]['ts'] <= $timestamp ) {
-			$turned_back = $transitions[ $count - 1 ]['ts'] + $transitions[ $count - 2 ]['offset'];
-
-			return gmdate( 'Y-m-d H:i:s', $turned_back );
+		if ( $count < 2 ) {
+			return $wall;
 		}
 
-		// No transition found: shift by how late the first occurrence was, which is never early.
-		return gmdate( 'Y-m-d H:i:s', strtotime( $wall . ' UTC' ) + ( $timestamp - $first->getTimestamp() ) );
+		$latest    = $transitions[ $count - 1 ];
+		$previous  = $transitions[ $count - 2 ];
+		$went_back = $previous['offset'] - $latest['offset'];
+
+		if ( $went_back > 0 && $timestamp < $latest['ts'] + $went_back ) {
+			return gmdate( 'Y-m-d H:i:s', $latest['ts'] + $previous['offset'] );
+		}
+
+		return $wall;
 	}
 
 	/**

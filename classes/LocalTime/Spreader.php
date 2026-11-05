@@ -99,8 +99,7 @@ final class Spreader {
 		$after   = 0;
 
 		do {
-			if ( (int) current_time( 'timestamp' ) >= $context['deadline'] ) {
-				self::logError( $campaign_id, 'ran out of time before the campaign send time' );
+			if ( self::outOfTime( $context ) ) {
 				return false;
 			}
 
@@ -229,6 +228,10 @@ final class Spreader {
 			return 0;
 		}
 
+		if ( self::outOfTime( $context ) ) {
+			return false;
+		}
+
 		if ( ! AssignmentLog::insertMany( array_merge( ...array_values( $pending ) ) ) ) {
 			self::logError( $context['campaign_id'], 'recording assignments failed: ' . $wpdb->last_error );
 			return false;
@@ -237,6 +240,10 @@ final class Spreader {
 		$moved = 0;
 
 		foreach ( $pending as $target => $entries ) {
+			if ( self::outOfTime( $context ) ) {
+				return false;
+			}
+
 			$result = self::move( $context, (string) $target, $entries );
 
 			if ( false === $result ) {
@@ -358,6 +365,19 @@ final class Spreader {
 			self::logError( $campaign_id, 'clearing records of unmoved rows failed: ' . $wpdb->last_error );
 			return false;
 		}
+
+		return true;
+	}
+
+	/**
+	 * Whether the deadline has passed. Rows not moved by then are left for the caller's fallback.
+	 */
+	private static function outOfTime( array $context ): bool {
+		if ( (int) current_time( 'timestamp' ) < $context['deadline'] ) {
+			return false;
+		}
+
+		self::logError( $context['campaign_id'], 'ran out of time before the campaign send time' );
 
 		return true;
 	}

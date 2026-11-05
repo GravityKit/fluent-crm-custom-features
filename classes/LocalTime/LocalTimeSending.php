@@ -573,7 +573,13 @@ class LocalTimeSending {
 		// flight, and the next chunk re-reads the campaign and takes its new scheduled_at.
 		$lock_key = '_fluentcrm_lock_campaign_processing_' . $campaign_id;
 		$token    = wp_generate_uuid4();
-		$locked   = Helper::acquireDbLock( $lock_key, 90, $token );
+
+		// A run still adding rows could release some at the anchor after the move below. Its rows
+		// cannot send until released, and the next minute's tick tries again.
+		if ( ! Helper::acquireDbLock( $lock_key, 90, $token ) ) {
+			error_log( 'CustomCRM local time: campaign ' . $campaign_id . ' waits a minute to fall back: its emails are still being queued' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			return;
+		}
 
 		try {
 			Campaign::withoutGlobalScope( 'type' )
@@ -584,9 +590,7 @@ class LocalTimeSending {
 
 			$updated = $this->moveAnchorRows( $campaign_id, $plan['anchor'], $fallback_at );
 		} finally {
-			if ( $locked ) {
-				Helper::deleteDbLock( $lock_key, $token );
-			}
+			Helper::deleteDbLock( $lock_key, $token );
 		}
 
 		$plan['fallback_at'] = $fallback_at;
