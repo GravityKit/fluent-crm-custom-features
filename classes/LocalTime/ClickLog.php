@@ -23,11 +23,24 @@ class ClickLog {
 
 	private const EXPORT_PAGE = 100;
 
+	/**
+	 * Contact IDs whose records could not be deleted. FluentCRM deletes the contact anyway, and then
+	 * nothing can find these rows by email, so the delete is tried again on later requests.
+	 */
+	private const RETRY_OPTION = 'customcrm_forget_contacts_retry';
+
 	public function register(): void {
 		add_action( 'fluent_crm/email_url_clicked', [ $this, 'logClick' ], 10, 2 );
 		add_action( 'fluentcrm_before_subscribers_deleted', [ $this, 'forgetContacts' ] );
 		add_filter( 'wp_privacy_personal_data_exporters', [ $this, 'addExporter' ] );
 		add_filter( 'wp_privacy_personal_data_erasers', [ $this, 'addEraser' ] );
+
+		$retry = get_option( self::RETRY_OPTION );
+
+		if ( $retry ) {
+			delete_option( self::RETRY_OPTION );
+			$this->forgetContacts( (array) $retry );
+		}
 	}
 
 	/**
@@ -57,6 +70,10 @@ class ClickLog {
 				$ok = false;
 				$this->reportOnce( 'deleting contact records failed: ' . $wpdb->last_error );
 			}
+		}
+
+		if ( ! $ok ) {
+			update_option( self::RETRY_OPTION, array_values( array_unique( array_merge( array_map( 'intval', (array) get_option( self::RETRY_OPTION, [] ) ), $contact_ids ) ) ), true );
 		}
 
 		return $ok;
@@ -100,7 +117,7 @@ class ClickLog {
 
 		$table = self::tableName();
 		$rows  = $wpdb->get_results( $wpdb->prepare(
-			"SELECT id, campaign_id, ip, user_agent, clicked_at_utc FROM {$table} WHERE subscriber_id = %d ORDER BY id LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			"SELECT c.id, c.campaign_id, c.ip, c.user_agent, c.clicked_at_utc, u.url FROM {$table} c LEFT JOIN {$wpdb->prefix}fc_url_stores u ON u.id = c.url_id WHERE c.subscriber_id = %d ORDER BY c.id LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$contact_id,
 			self::EXPORT_PAGE,
 			( max( 1, $page ) - 1 ) * self::EXPORT_PAGE
@@ -114,6 +131,7 @@ class ClickLog {
 				'item_id'     => 'customcrm-email-click-' . $row->id,
 				'data'        => [
 					[ 'name' => __( 'Campaign ID', 'fluent-crm-custom-features' ), 'value' => $row->campaign_id ],
+					[ 'name' => __( 'Link', 'fluent-crm-custom-features' ), 'value' => (string) $row->url ],
 					[ 'name' => __( 'IP address', 'fluent-crm-custom-features' ), 'value' => $row->ip ],
 					[ 'name' => __( 'User agent', 'fluent-crm-custom-features' ), 'value' => $row->user_agent ],
 					[ 'name' => __( 'Clicked at (UTC)', 'fluent-crm-custom-features' ), 'value' => $row->clicked_at_utc ],

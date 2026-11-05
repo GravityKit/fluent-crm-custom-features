@@ -507,7 +507,7 @@ final class SendTime {
 
 		$fold = self::repeatedHour( $timestamp, $site );
 
-		return $fold ? gmdate( 'Y-m-d H:i:s', $fold['ends'] + $fold['offset_before'] ) : $wall;
+		return $fold ? gmdate( 'Y-m-d H:i:s', $fold['starts'] + $fold['offset_before'] ) : $wall;
 	}
 
 	/**

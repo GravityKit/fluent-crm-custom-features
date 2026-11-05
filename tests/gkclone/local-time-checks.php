@@ -550,7 +550,7 @@ $at_start      = array_filter( $expected_held, static function ( $row ) use ( $w
 $held_records  = array_filter( AssignmentLog::forCampaign( (int) $held_campaign->id ), static function ( $r ) { return 1 === (int) $r['holdout']; } );
 $verified      = $verify_rows( $held_campaign, $held_plan );
 
-lt_check( 'holdout 20%: the held rows exist (5-20 of 60)', count( $expected_held ) >= 5 && count( $expected_held ) <= 20, count( $expected_held ) );
+lt_check( 'holdout 20%: the held rows exist (1-30 of 60; the share itself is checked at scale below)', count( $expected_held ) >= 1 && count( $expected_held ) <= 30, count( $expected_held ) );
 lt_check( 'holdout 20%: every held row is at 8:00 Denver on the delivery date', count( $at_start ) === count( $expected_held ), [ count( $at_start ), count( $expected_held ) ] );
 lt_check( 'holdout 20%: held rows are recorded with holdout = 1 and no slot', count( $held_records ) === count( $expected_held ) && ! array_filter( $held_records, static function ( $r ) { return null !== $r['slot_minutes']; } ) );
 lt_check( 'holdout 20%: every row matches its expected time and record', 60 === $verified['rows'] && 60 === $verified['records'] && ! $verified['problems'], $verified );
@@ -982,7 +982,7 @@ lt_check( 'ClickLog: no IP is stored when FluentCRM IP tracking is off', 3 === c
 
 $click_email = (string) $wpdb->get_var( $wpdb->prepare( "SELECT email FROM {$p}fc_subscribers WHERE id = %d", $click_row->subscriber_id ) );
 $exported    = $click_log->exportClicks( $click_email );
-lt_check( 'ClickLog: the privacy exporter is registered and returns the clicks', isset( apply_filters( 'wp_privacy_personal_data_exporters', [] )['customcrm-email-clicks'] ) && 3 <= count( $exported['data'] ) && $exported['done'], count( $exported['data'] ) );
+lt_check( 'ClickLog: the privacy exporter is registered and returns the clicks with their link', isset( apply_filters( 'wp_privacy_personal_data_exporters', [] )['customcrm-email-clicks'] ) && 3 <= count( $exported['data'] ) && $exported['done'] && in_array( "https://example.com/{$marker}", wp_list_pluck( $exported['data'][0]['data'], 'value' ), true ), $exported['data'][0] ?? null );
 
 $erased = $click_log->eraseClicks( $click_email );
 lt_check( 'ClickLog: the privacy eraser is registered and removes the clicks', isset( apply_filters( 'wp_privacy_personal_data_erasers', [] )['customcrm-email-clicks'] ) && $erased['items_removed'] && ! $count_clicks(), count( $count_clicks() ) );
@@ -998,6 +998,11 @@ $erase_failed = $click_log->eraseClicks( $click_email );
 $wpdb->suppress_errors( false );
 remove_filter( 'query', $bad_delete );
 lt_check( 'ClickLog: a failed erase says data was retained', true === $erase_failed['items_retained'] && false === $erase_failed['items_removed'] && [] !== $erase_failed['messages'], $erase_failed );
+lt_check( 'ClickLog: a failed delete is kept for retry', in_array( (int) $click_row->subscriber_id, array_map( 'intval', (array) get_option( 'customcrm_forget_contacts_retry', [] ) ), true ) );
+$retry_log = new ClickLog();
+$retry_log->register();
+remove_action( 'fluent_crm/email_url_clicked', [ $retry_log, 'logClick' ] );
+lt_check( 'ClickLog: the next request retries the delete and clears the retry list', false === get_option( 'customcrm_forget_contacts_retry' ) );
 
 $url_data            = UrlStores::getRowByShort( $short );
 $url_data->url_token = substr( $click_row->email_hash, 0, 8 );
