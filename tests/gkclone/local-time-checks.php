@@ -6,7 +6,9 @@
  * transaction); everything else runs inside one transaction that is rolled back. The script then
  * counts what it created by its marker, deletes anything left, and drops the two tables and their
  * version options when it created them. Outbound HTTP is blocked and wp_mail() is answered by
- * `pre_wp_mail`, so no email is sent.
+ * `pre_wp_mail`, so no email is sent. Also runs on a site where this plugin is live (staging): the
+ * plugin's own hooks are removed first, and where GravitySMTP replaces wp_mail() (which skips
+ * `pre_wp_mail`, and sandboxes on staging) mail is captured from its `wp_mail` filter.
  *
  *   docker cp tests/gkclone/local-time-checks.php <cli>:/tmp/ && docker exec <cli> wp eval-file /tmp/local-time-checks.php
  *
@@ -230,6 +232,26 @@ add_filter( 'pre_wp_mail', static function ( $short, $atts ) {
 	return false;
 }, 1, 2 );
 
+// With the plugin live its hooks would run beside the ones registered below, and run each step twice.
+foreach ( $GLOBALS['wp_filter'] as $lt_hook => $lt_filter ) {
+	foreach ( $lt_filter->callbacks as $lt_priority => $lt_callbacks ) {
+		foreach ( $lt_callbacks as $lt_callback ) {
+			$lt_function = $lt_callback['function'];
+
+			if ( is_array( $lt_function ) && is_object( $lt_function[0] ) && 0 === strpos( get_class( $lt_function[0] ), 'CustomCRM\\LocalTime\\' ) ) {
+				remove_filter( $lt_hook, $lt_function, $lt_priority );
+			}
+		}
+	}
+}
+
+if ( class_exists( 'Gravity_Forms\\Gravity_SMTP\\Gravity_SMTP' ) ) {
+	add_filter( 'wp_mail', static function ( $atts ) {
+		apply_filters( 'pre_wp_mail', null, $atts );
+		return $atts;
+	}, 0 );
+}
+
 $wpdb->query( 'START TRANSACTION' );
 register_shutdown_function( static function () use ( $wpdb ) {
 	$wpdb->query( 'ROLLBACK' );
@@ -256,7 +278,7 @@ lt_check(
 	'' === $bootstrap_path ? 'not checked: docker cp fluent-crm-custom-features.php to /tmp' : [ $filter_at, $init_at ]
 );
 
-$sending_source = (string) file_get_contents( '/tmp/LocalTime/LocalTimeSending.php' );
+$sending_source = (string) file_get_contents( ( new ReflectionClass( LocalTimeSending::class ) )->getFileName() );
 preg_match( '/public function register\(\): void \{.*?\n\t\}/s', $sending_source, $register_body );
 lt_check( 'register() does not add the MCP resume guard (a filter added on init is too late)', ! empty( $register_body[0] ) && false === strpos( $register_body[0], 'wp_register_ability_args' ), $register_body[0] ?? 'register() not found' );
 

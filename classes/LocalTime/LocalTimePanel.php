@@ -383,10 +383,7 @@ class LocalTimePanel {
 					if (!state.editable || !state.loaded) {
 						return '';
 					}
-					var on = toggle.checked || state.serverEnabled;
-					if (!on) {
-						return '';
-					}
+					// Before the "off" check: an enable still on its way can land after the box is unticked.
 					if (state.failed) {
 						return 'Your local-time setting did not save, so scheduling is paused. ' + state.failed;
 					}
