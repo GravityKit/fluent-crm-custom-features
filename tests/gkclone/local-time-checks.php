@@ -190,7 +190,7 @@ $hel_not_before = lt_at( '2026-10-31 12:00', 'UTC' );
 $hel_start     = SendTime::sendOn( '2026-11-01', $helsinki, 8 * 60, $hel_not_before );
 $hel_end       = SendTime::sendOn( '2026-11-01', $helsinki, 11 * 60, $hel_not_before );
 $hel_late      = SendTime::siteTimeInWindow( SendTime::sendOn( '2026-11-01', $helsinki, 10 * 60 + 30, $hel_not_before ), $hel_start, $hel_end, $denver );
-lt_check( 'siteTimeInWindow: a send in the repeated hour that would pass its window goes just before the clocks went back', '2026-11-01 01:59:59' === $hel_late, $hel_late );
+lt_check( 'siteTimeInWindow: a send in the repeated hour that would pass its window goes 15 minutes before the clocks went back', '2026-11-01 01:45:00' === $hel_late, $hel_late );
 $hel_early     = SendTime::siteTimeInWindow( SendTime::sendOn( '2026-11-01', $helsinki, 9 * 60, $hel_not_before ), $hel_start, $hel_end, $denver );
 lt_check( 'siteTimeInWindow: outside the repeated hour it is the wall time', '2026-11-01 01:00:00' === $hel_early, $hel_early );
 $kyiv_later    = lt_at( '2026-11-01 08:30', 'UTC' );
@@ -998,11 +998,44 @@ $erase_failed = $click_log->eraseClicks( $click_email );
 $wpdb->suppress_errors( false );
 remove_filter( 'query', $bad_delete );
 lt_check( 'ClickLog: a failed erase says data was retained', true === $erase_failed['items_retained'] && false === $erase_failed['items_removed'] && [] !== $erase_failed['messages'], $erase_failed );
-lt_check( 'ClickLog: a failed delete is kept for retry', in_array( (int) $click_row->subscriber_id, array_map( 'intval', (array) get_option( 'customcrm_forget_contacts_retry', [] ) ), true ) );
-$retry_log = new ClickLog();
-$retry_log->register();
-remove_action( 'fluent_crm/email_url_clicked', [ $retry_log, 'logClick' ] );
-lt_check( 'ClickLog: the next request retries the delete and clears the retry list', false === get_option( 'customcrm_forget_contacts_retry' ) );
+lt_check( 'ClickLog: a failed erase asks WordPress to try again, then stops', false === $erase_failed['done'] && ( static function () use ( $click_log, $click_email, $bad_delete, $wpdb ) {
+	add_filter( 'query', $bad_delete );
+	$wpdb->suppress_errors( true );
+	$last = $click_log->eraseClicks( $click_email, 3 );
+	$wpdb->suppress_errors( false );
+	remove_filter( 'query', $bad_delete );
+	return true === $last['done'];
+} )() );
+lt_check( 'ClickLog: a failed delete asks later requests to clean up', 0 < (int) get_option( 'customcrm_click_log_sweep' ) );
+
+// The contact is gone by the time the next request runs: its row has no contact, and is removed.
+$orphan_id = 2000000000 + wp_rand( 1, 99999999 );
+$wpdb->insert( ClickLog::tableName(), [ 'campaign_id' => 1, 'email_id' => 1, 'subscriber_id' => $orphan_id, 'url_id' => 0, 'ip' => '', 'user_agent' => $marker, 'clicked_at_utc' => gmdate( 'Y-m-d H:i:s' ) ] );
+$sweep_log = new ClickLog();
+$sweep_log->register();
+remove_action( 'fluent_crm/email_url_clicked', [ $sweep_log, 'logClick' ] );
+lt_check( 'ClickLog: the next request removes rows whose contact is gone', 0 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . ClickLog::tableName() . ' WHERE subscriber_id = %d', $orphan_id ) ) );
+lt_check( 'ClickLog: cleanup keeps running briefly in case a contact is still being deleted', 0 < (int) get_option( 'customcrm_click_log_sweep' ) );
+update_option( 'customcrm_click_log_sweep', time() - 1000, true );
+$sweep_log = new ClickLog();
+$sweep_log->register();
+remove_action( 'fluent_crm/email_url_clicked', [ $sweep_log, 'logClick' ] );
+lt_check( 'ClickLog: cleanup stops after that', false === get_option( 'customcrm_click_log_sweep' ) );
+
+$clicks_before_bad_row = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . ClickLog::tableName() );
+$click_log->logClick( (object) [ 'id' => 1, 'campaign_id' => null, 'subscriber_id' => 5 ], null );
+$click_log->logClick( (object) [ 'id' => 1, 'campaign_id' => 5, 'subscriber_id' => null ], null );
+lt_check( 'ClickLog: an email row without a campaign or contact is not logged', $clicks_before_bad_row === (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . ClickLog::tableName() ) );
+
+$bad_read = static function ( $query ) {
+	return 0 === stripos( ltrim( $query ), 'SELECT c.id, c.campaign_id' ) ? 'SELECT * FROM lt_table_that_does_not_exist' : $query;
+};
+add_filter( 'query', $bad_read );
+$wpdb->suppress_errors( true );
+$export_failed = $click_log->exportClicks( $click_email );
+$wpdb->suppress_errors( false );
+remove_filter( 'query', $bad_read );
+lt_check( 'ClickLog: a failed export read returns an error, not an empty export', is_wp_error( $export_failed ) );
 
 $url_data            = UrlStores::getRowByShort( $short );
 $url_data->url_token = substr( $click_row->email_hash, 0, 8 );

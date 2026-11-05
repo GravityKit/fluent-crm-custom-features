@@ -24,10 +24,13 @@ class ClickLog {
 	private const EXPORT_PAGE = 100;
 
 	/**
-	 * Contact IDs whose records could not be deleted. FluentCRM deletes the contact anyway, and then
-	 * nothing can find these rows by email, so the delete is tried again on later requests.
+	 * Set when a contact's records could not be deleted. FluentCRM deletes the contact anyway, and
+	 * then nothing can find those rows by email, so later requests delete rows with no contact. Holds
+	 * the time of the failure, and stays a while so a contact deleted just after it is covered too.
 	 */
-	private const RETRY_OPTION = 'customcrm_forget_contacts_retry';
+	private const SWEEP_OPTION = 'customcrm_click_log_sweep';
+
+	private const SWEEP_SECONDS = 300;
 
 	public function register(): void {
 		add_action( 'fluent_crm/email_url_clicked', [ $this, 'logClick' ], 10, 2 );
@@ -35,11 +38,31 @@ class ClickLog {
 		add_filter( 'wp_privacy_personal_data_exporters', [ $this, 'addExporter' ] );
 		add_filter( 'wp_privacy_personal_data_erasers', [ $this, 'addEraser' ] );
 
-		$retry = get_option( self::RETRY_OPTION );
+		$this->sweepIfNeeded();
+	}
 
-		if ( $retry ) {
-			delete_option( self::RETRY_OPTION );
-			$this->forgetContacts( (array) $retry );
+	/**
+	 * After a failed delete, remove rows whose contact no longer exists.
+	 */
+	private function sweepIfNeeded(): void {
+		global $wpdb;
+
+		$failed_at = (int) get_option( self::SWEEP_OPTION );
+
+		if ( ! $failed_at ) {
+			return;
+		}
+
+		$ok = true;
+
+		foreach ( [ self::tableName(), AssignmentLog::table() ] as $table ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$deleted = $wpdb->query( "DELETE t FROM {$table} t LEFT JOIN {$wpdb->prefix}fc_subscribers s ON s.id = t.subscriber_id WHERE s.id IS NULL" );
+			$ok      = $ok && false !== $deleted;
+		}
+
+		if ( $ok && time() - $failed_at > self::SWEEP_SECONDS ) {
+			delete_option( self::SWEEP_OPTION );
 		}
 	}
 
@@ -73,7 +96,7 @@ class ClickLog {
 		}
 
 		if ( ! $ok ) {
-			update_option( self::RETRY_OPTION, array_values( array_unique( array_merge( array_map( 'intval', (array) get_option( self::RETRY_OPTION, [] ) ), $contact_ids ) ) ), true );
+			update_option( self::SWEEP_OPTION, time(), true );
 		}
 
 		return $ok;
@@ -104,9 +127,9 @@ class ClickLog {
 	}
 
 	/**
-	 * @return array{data: array, done: bool}
+	 * @return array{data: array, done: bool}|\WP_Error A WP_Error makes WordPress report the export as failed.
 	 */
-	public function exportClicks( string $email, int $page = 1 ): array {
+	public function exportClicks( string $email, int $page = 1 ) {
 		global $wpdb;
 
 		$contact_id = $this->contactId( $email );
@@ -116,6 +139,9 @@ class ClickLog {
 		}
 
 		$table = self::tableName();
+
+		$wpdb->last_error = '';
+
 		$rows  = $wpdb->get_results( $wpdb->prepare(
 			"SELECT c.id, c.campaign_id, c.ip, c.user_agent, c.clicked_at_utc, u.url FROM {$table} c LEFT JOIN {$wpdb->prefix}fc_url_stores u ON u.id = c.url_id WHERE c.subscriber_id = %d ORDER BY c.id LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$contact_id,
@@ -124,7 +150,11 @@ class ClickLog {
 		) );
 		$data  = [];
 
-		foreach ( (array) $rows as $row ) {
+		if ( '' !== (string) $wpdb->last_error || ! is_array( $rows ) ) {
+			return new \WP_Error( 'customcrm_click_export_failed', __( 'Campaign email clicks could not be read because of a database error.', 'fluent-crm-custom-features' ) );
+		}
+
+		foreach ( $rows as $row ) {
 			$data[] = [
 				'group_id'    => 'customcrm-email-clicks',
 				'group_label' => __( 'Campaign email clicks', 'fluent-crm-custom-features' ),
@@ -159,7 +189,8 @@ class ClickLog {
 			'items_removed'  => $erased && $had_clicks,
 			'items_retained' => ! $erased,
 			'messages'       => $erased ? [] : [ __( 'Campaign email clicks could not be erased because of a database error.', 'fluent-crm-custom-features' ) ],
-			'done'           => true,
+			// WordPress calls again with the next page until done, so a failure gets two more tries.
+			'done'           => $erased || $page >= 3,
 		];
 	}
 
@@ -224,6 +255,11 @@ class ClickLog {
 
 			// Anonymous tracking is the sender's promise not to record who clicked.
 			if ( $is_anonymous || ! is_object( $campaign_email ) ) {
+				return;
+			}
+
+			// The hook also fires for other tracked emails, whose rows may have neither ID.
+			if ( empty( $campaign_email->campaign_id ) || empty( $campaign_email->subscriber_id ) ) {
 				return;
 			}
 

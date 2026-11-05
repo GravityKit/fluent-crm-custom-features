@@ -513,8 +513,8 @@ final class SendTime {
 	/**
 	 * Like siteTimeNotBefore(), for a send that must stay inside its window. The repeated hour cannot
 	 * be stored, so a send in it normally waits until that hour ends. If that would pass the window's
-	 * end, it goes in the last second before the clocks went back, when that is inside the window. A
-	 * window that lies wholly inside the repeated hour has no time that can be stored, so it waits.
+	 * end, it goes 15 minutes before the clocks went back, when that is inside the window, so the
+	 * once-a-minute sender cannot miss it. Otherwise no good time can be stored, so it waits.
 	 *
 	 * @param DateTimeImmutable $send         When the row should go.
 	 * @param DateTimeImmutable $window_start When the recipient's window opens.
@@ -530,13 +530,13 @@ final class SendTime {
 			return self::siteTimeNotBefore( $send, $site );
 		}
 
-		$last_first_pass = $fold['starts'] - 1;
+		$before_fold = $fold['starts'] - 15 * 60;
 
-		if ( $last_first_pass < $window_start->getTimestamp() ) {
+		if ( $before_fold < $window_start->getTimestamp() ) {
 			return self::siteTimeNotBefore( $send, $site );
 		}
 
-		return gmdate( 'Y-m-d H:i:s', $last_first_pass + $fold['offset_before'] );
+		return gmdate( 'Y-m-d H:i:s', $before_fold + $fold['offset_before'] );
 	}
 
 	/**
