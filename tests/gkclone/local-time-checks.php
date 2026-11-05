@@ -683,12 +683,15 @@ remove_filter( 'query', $slow_filter );
 $slow_left   = count( array_filter( $rows_of( (int) $slow_campaign->id ), static function ( $row ) use ( $slow_anchor ) { return $row->scheduled_at === $slow_anchor; } ) );
 lt_check( 'spread: a write that crosses the deadline returns false and leaves the rows for the fallback', false === $slow_result && $slow_left === count( $contact_ids ), [ $slow_result, $slow_left ] );
 $slow_records = count( AssignmentLog::forCampaign( (int) $slow_campaign->id ) );
+// One row as if a partial spread had already moved it: the fallback's email promises one time for everyone.
+$wpdb->query( $wpdb->prepare( "UPDATE {$p}fc_campaign_emails SET scheduled_at = %s WHERE campaign_id = %d LIMIT 1", gmdate( 'Y-m-d H:i:s', $now + 30 * MINUTE_IN_SECONDS ), $slow_campaign->id ) );
 lt_call( $sending, 'fallBack', $reload( $slow_campaign ), LocalTimeSending::getPlan( (int) $slow_campaign->id ), 'test reason' );
 lt_check( 'fallback: records of rows that never got their local time are removed', $slow_records > 0 && ! AssignmentLog::forCampaign( (int) $slow_campaign->id ), [ $slow_records, count( AssignmentLog::forCampaign( (int) $slow_campaign->id ) ) ] );
+lt_check( 'fallback: every unsent row goes at the fallback time, including one a partial spread moved', count( $contact_ids ) === count( array_filter( $rows_of( (int) $slow_campaign->id ), static function ( $row ) use ( $fb_picked ) { return $row->scheduled_at === $fb_picked; } ) ) );
 Campaign::withoutGlobalScope( 'type' )->where( 'id', $slow_campaign->id )->update( [ 'status' => 'archived' ] );
 
-// FluentCRM saves the campaign before its rows, and a row update can fail: rows left at a time
-// the plan moved away from are moved before spreading, so the spread does not report 0 of them.
+// FluentCRM saves the campaign before its rows, and a row update can fail: rows left anywhere,
+// such as at an earlier spread's times, are moved before spreading, so it does not report 0 of them.
 $left_old      = gmdate( 'Y-m-d H:i:s', $now + 9 * DAY_IN_SECONDS );
 $left_date     = gmdate( 'Y-m-d', $now + 9 * DAY_IN_SECONDS );
 $left_anchor   = SendTime::siteTimeNotBefore( SendTime::firstWindowOpens( $left_date, 8 * 60 ), $site );
@@ -697,7 +700,7 @@ $left_campaign = $make_campaign( 'replan-leftover', $left_anchor, $tag_id, [
 	'picked_at'  => $left_old,
 	'anchor'     => $left_anchor,
 	'generation' => wp_generate_uuid4(),
-	'moved_from' => [ $left_old, $fb_anchor ],
+	'reset_rows' => true,
 ], 'scheduled' );
 foreach ( array_values( $contact_ids ) as $left_id ) {
 	$wpdb->insert( "{$p}fc_campaign_emails", [ 'campaign_id' => $left_campaign->id, 'email_type' => 'campaign', 'subscriber_id' => $left_id, 'email_address' => "{$marker}-left-{$left_id}@gravitykit-lt.dev", 'status' => 'scheduled', 'scheduled_at' => $left_old, 'created_at' => $ts, 'updated_at' => $ts ] );
@@ -705,6 +708,7 @@ foreach ( array_values( $contact_ids ) as $left_id ) {
 $sending->advance( (int) $left_campaign->id );
 $left_rows = $rows_of( (int) $left_campaign->id );
 $left_stuck = count( array_filter( $left_rows, static function ( $row ) use ( $left_old, $left_anchor ) { return $row->scheduled_at === $left_old || $row->scheduled_at === $left_anchor; } ) );
+lt_check( 're-plan: the reset is done once, so a retried spread keeps moved rows', false === LocalTimeSending::getPlan( (int) $left_campaign->id )['reset_rows'] );
 lt_check( 're-plan: rows left at the old time are spread, not skipped', 0 === $left_stuck && count( $contact_ids ) === count( AssignmentLog::forCampaign( (int) $left_campaign->id ) ), [ $left_stuck, (string) $meta( (int) $left_campaign->id, LocalTimeSending::RESULT_META ) ] );
 Campaign::withoutGlobalScope( 'type' )->where( 'id', $left_campaign->id )->update( [ 'status' => 'archived' ] );
 
@@ -755,7 +759,7 @@ try {
 $throwing->throw_for = [];
 lt_check( 'tick: an exception inside a campaign step does not escape (it would skip the minute\'s sending)', '' === $escaped, $escaped );
 lt_check( 'tick: one campaign throwing does not stop another from being handled', LocalTimeSending::getPlan( (int) $ex_b->id )['generation'] !== $ex_b_gen && $anchor_of( $week_out2 ) === $reload( $ex_b )->scheduled_at, [ $reload( $ex_b )->scheduled_at, $anchor_of( $week_out2 ) ] );
-lt_check( 'tick: a campaign that throws within 2 minutes of its anchor falls back to the picked time and the admin is emailed', $ex_picked === $reload( $ex_a )->scheduled_at && $ex_picked === LocalTimeSending::getPlan( (int) $ex_a->id )['fallback_at'] && 1 === count( $lt_mail ) - $mail_before, [ $reload( $ex_a )->scheduled_at, count( $lt_mail ) - $mail_before ] );
+lt_check( 'tick: a campaign that throws close to its anchor falls back to the picked time and the admin is emailed', $ex_picked === $reload( $ex_a )->scheduled_at && $ex_picked === LocalTimeSending::getPlan( (int) $ex_a->id )['fallback_at'] && 1 === count( $lt_mail ) - $mail_before, [ $reload( $ex_a )->scheduled_at, count( $lt_mail ) - $mail_before ] );
 lt_check( 'tick: the lock is released after an exception', '' === (string) $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", '_customcrm_lock_local_time' ) ) );
 
 $ex_far_anchor = gmdate( 'Y-m-d H:i:s', $now + 40 * MINUTE_IN_SECONDS );
