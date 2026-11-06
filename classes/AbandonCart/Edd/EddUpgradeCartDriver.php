@@ -481,8 +481,8 @@ class EddUpgradeCartDriver extends EddCartDriver {
 		}
 
 		if ( $more_sites ) {
-			/* translators: %s: product name, e.g. GravityImport */
-			return sprintf( esc_html__( 'a %s plan with more sites', 'fluent-crm-custom-features' ), $product );
+			/* translators: 1: "a" or "an", 2: product name, e.g. GravityImport */
+			return sprintf( esc_html__( '%1$s %2$s plan with more sites', 'fluent-crm-custom-features' ), self::article( $product ), $product );
 		}
 
 		if ( $to_lifetime ) {
@@ -492,6 +492,19 @@ class EddUpgradeCartDriver extends EddCartDriver {
 
 		/* translators: %s: product name, e.g. GravityImport */
 		return sprintf( esc_html__( 'a different %s plan', 'fluent-crm-custom-features' ), $product );
+	}
+
+	/**
+	 * "a" or "an" for the word that follows, by its first letter: "an All Access Pass", "a GravityView".
+	 *
+	 * @param string $next_words The text the article sits in front of.
+	 */
+	private static function article( string $next_words ): string {
+		$first_letter = strtolower( substr( ltrim( $next_words ), 0, 1 ) );
+
+		$starts_with_vowel = '' !== $first_letter && false !== strpos( 'aeiou', $first_letter );
+
+		return $starts_with_vowel ? 'an' : 'a';
 	}
 
 	/**
