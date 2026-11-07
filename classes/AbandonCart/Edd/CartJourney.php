@@ -6,6 +6,8 @@ use CustomCRM\EddLicenseActivationTracker;
 use FluentCrm\App\Models\Subscriber;
 use FluentCrm\App\Modules\AbandonCart\AbandonCartModel;
 use FluentCrm\App\Modules\AbandonCart\AbCartHelper;
+use FluentCrm\App\Models\EventTracker;
+use FluentCrm\App\Services\Helper;
 
 /**
  * Records when an upgrade or renewal starts and completes, on the FluentCRM contact, apart from
@@ -25,6 +27,10 @@ use FluentCrm\App\Modules\AbandonCart\AbCartHelper;
  * one-item cart when it swaps the item, which deletes the row and makes a new one. So a start is
  * claimed per license, in a transient that outlives the row. Undoing a swap leaves the claim in
  * place: the customer did start, and choosing the upgrade again is not a second start.
+ *
+ * Events stay stored as JSON, because Event Tracking conditions read their properties. Staff see
+ * them as short sentences: in FluentCRM's Event Tracking panel, and on the contact's Journey tab,
+ * which Conversion Bridge owns and otherwise only knows about website visits.
  */
 class CartJourney {
 
@@ -42,6 +48,9 @@ class CartJourney {
 
 	private const CLAIM_PREFIX = 'customcrm_cart_journey_';
 
+	/** The value and event key of one of these events in FluentCRM's Event Tracking panel. */
+	private const PANEL_VALUE = '~<p class="fcrm_event_tracking_value">([^<]*)</p>(<div class="fcrm_event_tracking_footer"><div class="fcrm_event_tracking_badge">(?:upgrade|renewal)_(?:started|completed)\b)~';
+
 	/** Days a license stays claimed. Matches the cart cookie, so an older cart counts as a new one. */
 	private const CLAIM_DAYS = 30;
 
@@ -51,6 +60,105 @@ class CartJourney {
 	public static function register(): void {
 		add_action( 'gk/store/journey-completed', [ self::class, 'orderCompleted' ], 10, 1 );
 		add_filter( 'gk/store/is-staff-session', [ self::class, 'addStaffChecks' ], 10, 2 );
+		add_filter( 'fluent_crm/subscriber_info_widgets', [ self::class, 'describePanelEvents' ], 12, 1 );
+		add_filter( 'fluent_crm/subscriber_info_widget_event_tracking', [ self::class, 'describePanelEvents' ], 12, 1 );
+		add_filter( 'fluencrm_profile_section_conversion_bridge', [ self::class, 'addToJourneyTab' ], 20, 2 );
+	}
+
+	/**
+	 * Shows these events as a short sentence in the Event Tracking panel, not as JSON. Other events,
+	 * and a panel whose markup has changed, are left as they are.
+	 *
+	 * @param array<string,mixed> $widgets The contact page's sidebar widgets.
+	 * @return array<string,mixed>
+	 */
+	public static function describePanelEvents( $widgets ): array {
+		$widgets = (array) $widgets;
+		$content = (string) ( $widgets['event_tracking']['content'] ?? '' );
+
+		if ( '' === $content ) {
+			return $widgets;
+		}
+
+		$described = preg_replace_callback(
+			self::PANEL_VALUE,
+			static function ( array $match ): string {
+				$summary = self::summary( html_entity_decode( $match[1], ENT_QUOTES ) );
+
+				return '' === $summary ? $match[0] : '<p class="fcrm_event_tracking_value">' . esc_html( $summary ) . '</p>' . $match[2];
+			},
+			$content
+		);
+
+		$widgets['event_tracking']['content'] = $described ?? $content;
+
+		return $widgets;
+	}
+
+	/**
+	 * Lists these events on the contact's Journey tab, above any website visits. Replaces the tab's
+	 * "No journey found", which would read as if nothing had been recorded.
+	 *
+	 * @param array<string,mixed> $section    The tab's content.
+	 * @param Subscriber          $subscriber The contact.
+	 * @return array<string,mixed>
+	 */
+	public static function addToJourneyTab( $section, $subscriber ): array {
+		$section = (array) $section;
+		$events  = EventTracker::where( 'subscriber_id', $subscriber->id )
+			->whereIn( 'event_key', array_keys( self::TITLES ) )
+			->orderBy( 'updated_at', 'DESC' )
+			->get();
+
+		if ( $events->isEmpty() ) {
+			return $section;
+		}
+
+		$html = '<h3>' . esc_html__( 'Upgrades and renewals', 'fluent-crm-custom-features' ) . '</h3><ul class="fcrm_event_tracking_lists">';
+
+		foreach ( $events as $event ) {
+			$html .= '<li><p class="fcrm_event_tracking_title">' . esc_html( $event->title ) . '</p>';
+			$html .= '<p class="fcrm_event_tracking_value">' . esc_html( self::summary( (string) $event->value ) ) . '</p>';
+			$html .= '<div class="fcrm_event_tracking_footer"><div class="fcrm_event_tracking_badge">' . esc_html( $event->event_key );
+			$html .= '<span class="fcrm_event_tracking_count">' . (int) $event->counter . '</span></div>';
+			$html .= '<span class="fcrm_event_tracking_date">' . esc_html( Helper::formatDateTime( $event->updated_at ) ) . '</span></div></li>';
+		}
+
+		$visits   = (string) ( $section['content_html'] ?? '' );
+		$is_empty = __( 'No journey found', 'conversion-bridge' ) === $visits; // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+
+		$section['content_html'] = $html . '</ul>' . ( $is_empty ? '' : $visits );
+
+		return $section;
+	}
+
+	/**
+	 * Says what a stored event value holds, such as "Order 795053, license 22985".
+	 *
+	 * @param string $value The event's JSON value.
+	 * @return string Empty when the value isn't one of these events'.
+	 */
+	private static function summary( string $value ): string {
+		$data        = json_decode( $value, true );
+		$data        = is_array( $data ) ? $data : [];
+		$license_ids = array_filter( explode( ',', (string) ( $data['license_ids'] ?? '' ) ) );
+		$order_id    = (int) ( $data['order_id'] ?? 0 );
+		$cart_id     = (int) ( $data['cart_id'] ?? 0 );
+
+		if ( ! $license_ids || ( ! $order_id && ! $cart_id ) ) {
+			return '';
+		}
+
+		/* translators: %s: comma-separated license IDs. */
+		$licenses = sprintf( _n( 'license %s', 'licenses %s', count( $license_ids ), 'fluent-crm-custom-features' ), implode( ', ', $license_ids ) );
+
+		/* translators: 1: order ID, 2: the licenses, such as "license 22985". */
+		$order = __( 'Order %1$d, %2$s', 'fluent-crm-custom-features' );
+
+		/* translators: 1: cart ID, 2: the licenses, such as "license 22985". */
+		$cart = __( 'Cart %1$d, %2$s', 'fluent-crm-custom-features' );
+
+		return $order_id ? sprintf( $order, $order_id, $licenses ) : sprintf( $cart, $cart_id, $licenses );
 	}
 
 	/**

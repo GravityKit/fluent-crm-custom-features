@@ -171,6 +171,31 @@ try {
 	}
 	$check( 'bad completion data does nothing', ! $threw && 0 === count( $events( $contact, 'nonsense_completed' ) ) );
 
+	// Staff see sentences; the stored value stays JSON for Event Tracking conditions.
+	$shown = $contact_for( 'shown' );
+	CartJourney::orderCompleted( [ 'journey' => 'renewal', 'order_type' => 'manual_renewal', 'order_id' => 795053, 'email' => $shown->email, 'license_ids' => [ 22985 ] ] );
+	CartJourney::cartSaved( $cart( $upgrade, $shown->email, 363 ), [ $item( $lic + 41 ), $item( $lic + 42 ) ] );
+	FluentCrmApi( 'event_tracker' )->track( [ 'subscriber' => $shown, 'provider' => 'edd', 'event_key' => 'license_activated', 'title' => 'Activated', 'value' => '{"site":"a.test"}' ] );
+
+	$panel = (string) ( apply_filters( 'fluent_crm/subscriber_info_widgets', [], $shown )['event_tracking']['content'] ?? '' );
+	$check( 'panel shows a completed event as a sentence', false !== strpos( $panel, 'Order 795053, license 22985' ), $panel );
+	$check( 'panel lists several licenses', false !== strpos( $panel, 'Cart 363, licenses ' ), $panel );
+	$check( 'panel hides this JSON', false === strpos( $panel, 'order_type' ), $panel );
+	$check( 'panel leaves other events alone', false !== strpos( $panel, 'a.test' ), $panel );
+
+	$stored = json_decode( (string) $events( $shown, 'renewal_completed' )[0]->value, true );
+	$check( 'stored value stays JSON', 'manual_renewal' === ( $stored['order_type'] ?? '' ), $stored );
+
+	$empty_tab = [ 'content_html' => __( 'No journey found', 'conversion-bridge' ) ];
+	$tab       = CartJourney::addToJourneyTab( $empty_tab, $shown )['content_html'];
+	$check( 'Journey tab lists the events', false !== strpos( $tab, 'Renewal completed' ) && false !== strpos( $tab, 'Order 795053, license 22985' ), $tab );
+	$check( 'Journey tab drops "No journey found"', false === strpos( $tab, $empty_tab['content_html'] ), $tab );
+	$check( 'Journey tab leaves out other events', false === strpos( $tab, 'a.test' ), $tab );
+	$check( 'Journey tab keeps website visits', false !== strpos( CartJourney::addToJourneyTab( [ 'content_html' => '<p>Visited /pricing/</p>' ], $shown )['content_html'], 'Visited /pricing/' ) );
+
+	$no_events = $contact_for( 'noevents' );
+	$check( 'Journey tab is untouched without events', $empty_tab === CartJourney::addToJourneyTab( $empty_tab, $no_events ) );
+
 	// Without the theme's listener the plugin still records the start.
 	remove_all_actions( 'customcrm/edd_cart/journey_started' );
 	remove_all_filters( 'gk/store/is-staff-session' );
