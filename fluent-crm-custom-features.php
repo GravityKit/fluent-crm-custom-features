@@ -190,6 +190,7 @@ add_action(
 	function () {
 		if ( customcrm_cart_drivers_are_available() && function_exists( 'EDD' ) ) {
 			\CustomCRM\AbandonCart\Edd\EddCartTracking::registerEarlyHooks();
+			\CustomCRM\AbandonCart\Edd\CartJourney::register();
 			add_action( 'admin_init', [ \CustomCRM\AbandonCart\Edd\EddCartTracking::class, 'ensureIndexes' ] );
 
 			// Always on: it only acts while internal-only mode lists domains.

@@ -503,6 +503,8 @@ class EddCartTracking {
 
 		$this->setCookie( $record->checkout_key );
 
+		CartJourney::cartSaved( $record, $items );
+
 		// Renewal wins: a license being renewed stops getting upgrade emails.
 		if ( $is_renewal ) {
 			$renewal_items = array_filter( $items, function ( $item ) {
