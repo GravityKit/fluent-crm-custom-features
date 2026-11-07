@@ -49,6 +49,20 @@ Deleting the old `fc_funnel_subscribers` run is not enough. FluentCRM skips any 
 - **Upgrade emails don't check license ownership.** Software Licensing lets any email check out an upgrade for any license key, and the upgrade driver doesn't check the cart email owns the license. An email can tell someone about "your current license" when it isn't theirs.
 - On live cart 32 (2026-09-30) the 60-minute wait before upgrade email 1 took 29 seconds. It was probably forced by a test; confirm before relying on the timing.
 
+## Upgrade and renewal tracking (`CartJourney`)
+
+Records when an upgrade or manual renewal starts and completes, apart from the cart emails. Automatic renewals have no cart, so they get none of this.
+
+- **On the contact:** FluentCRM tracking events `upgrade_started`, `upgrade_completed`, `renewal_started`, `renewal_completed`, provider `edd`. Automations can start on "Tracking Event Recorded" or check them with Event Tracking conditions. That trigger only runs for subscribed contacts.
+- **Event values must stay scalar.** The contact page runs each JSON value through `wp_kses_post()`; an array there is a fatal on that contact's page. License IDs are stored as a comma list.
+- **Between the plugins, hooks only:** this plugin fires `customcrm/edd_cart/journey_started`; Block-Theme's `posthog-purchases.php` sends PostHog events and fires `gk/store/journey_completed`, which this plugin records. Without Block-Theme, starts are still recorded and completions are not.
+- **Starts need a saved cart.** With a provider switched off in FluentCRM, or a shopper opted out, nothing starts, while completions still record.
+- **Once per cart is claimed per license, in a transient** (`customcrm_cart_journey_<journey>_<license>`, 30 days), because the checkout upgrade card deletes and recreates the row of a one-item cart. A completed order frees its licenses.
+- **Undoing a card swap leaves the start standing.** The customer did start; choosing the upgrade again does not count twice.
+- **No contact, no record.** This code never creates a contact, because that could start other automations.
+- Left out: FluentCRM's disabled roles, anyone switched to a customer with User Switching, and internal email domains (`gk/fluentcrm/internal_email_domains`), through the `gk/store/is_staff_session` filter. So a test order with a team address records nothing here or in the four PostHog events; test with another address.
+- Checks: `tests/gkclone/cart-journey-checks.php`.
+
 ## Upgrade email wording
 
 - `{{ab_cart_edd_upgrade.new_plan_name}}` names the new plan mid-sentence. Another product: its name ("All Access Pass"). Same product: what the upgrade adds, worked out from Software Licensing's site limits (0 = unlimited) and lifetime flags: "a GravityImport plan with more sites", "a lifetime GravityImport plan", "a lifetime GravityImport plan with more sites", else "a different GravityImport plan". Never "the bigger {product} plan": it doesn't say what is bigger, and is wrong for a same-size lifetime upgrade.
