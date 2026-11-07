@@ -501,19 +501,19 @@ class EddCartTracking {
 				'recovery_discount'  => $has_offer ? Arr::get( $previous, 'recovery_discount' ) : null,
 				'recovery_discounts' => $has_offer ? Arr::get( $previous, 'recovery_discounts' ) : null,
 				'from_cart_id'       => $left_cart_id ?: Arr::get( $previous, 'from_cart_id' ),
+				'browser'            => self::browserTag(),
 			],
 		];
 
 		if ( ! $record ) {
 			$data['status'] = 'draft';
-			$record         = AbandonCartModel::create( $data );
+			$record         = self::keepOneCartPerBrowser( AbandonCartModel::create( $data ), $data );
 		} else {
 			$record->fill( $data );
 			$record->save();
 		}
 
-		// Other drafts for this address stay: each belongs to the browser that saved it. The runner
-		// emails one of them (OneCartPerAddress).
+		// Other browsers' drafts for this address stay. The runner emails one of them (OneCartPerAddress).
 		$this->setCookie( self::cookieValue( $record ) );
 
 		CartJourney::cartSaved( $record, $items );
@@ -1299,6 +1299,14 @@ class EddCartTracking {
 					$tracking->setCookie( self::cookieValue( $record ) );
 					$tracking->setHandoffCookie( $record );
 				}
+				// A skipped cart is not open, so later saves and the order would miss it. The runner
+				// looks at it afresh, and skips it again if the reason still holds.
+				if ( 'skipped' === $record->status ) {
+					$record->status = 'draft';
+					$record->note   = '';
+					$record->save();
+				}
+
 				// Signing in is activity: the cart is not abandoned while its shopper signs in.
 				$record->touch();
 			} catch ( \Throwable $error ) {
@@ -1711,6 +1719,66 @@ class EddCartTracking {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Keeps one draft per browser and address. A browser's first saves can overlap, each finding no
+	 * cart yet; its reminder would then show whichever copy goes first. The lowest ID stays, so
+	 * overlapping requests all settle on the same row.
+	 *
+	 * @param AbandonCartModel    $record The draft just created.
+	 * @param array<string,mixed> $data   What was saved.
+	 * @return AbandonCartModel The browser's one draft.
+	 */
+	private static function keepOneCartPerBrowser( AbandonCartModel $record, array $data ): AbandonCartModel {
+		$browser = (string) Arr::get( $data, 'cart.browser', '' );
+
+		if ( '' === $browser ) {
+			return $record;
+		}
+
+		$drafts = AbandonCartModel::whereIn( 'provider', self::PROVIDERS )
+			->where( 'email', $record->email )
+			->where( 'status', 'draft' )
+			->orderBy( 'id' )
+			->get();
+
+		$kept = null;
+
+		foreach ( $drafts as $draft ) {
+			if ( Arr::get( (array) $draft->cart, 'browser' ) !== $browser ) {
+				continue;
+			}
+
+			if ( ! $kept ) {
+				$kept = $draft;
+				continue;
+			}
+
+			$draft->delete();
+		}
+
+		if ( ! $kept || (int) $kept->id === (int) $record->id ) {
+			return $record;
+		}
+
+		$kept->fill( $data );
+		$kept->save();
+
+		return $kept;
+	}
+
+	/**
+	 * Names this browser's EDD session without storing the session key.
+	 *
+	 * @return string Empty when the browser has no session yet.
+	 */
+	private static function browserTag(): string {
+		$session = EDD()->session;
+		$cookie  = is_object( $session ) && method_exists( $session, 'get_session_cookie' ) ? $session->get_session_cookie() : false;
+		$key     = (string) ( is_array( $cookie ) ? ( $cookie['session_key'] ?? '' ) : '' );
+
+		return '' === $key ? '' : hash_hmac( 'sha256', 'cart-browser|' . $key, wp_salt( 'auth' ) );
 	}
 
 	/**
