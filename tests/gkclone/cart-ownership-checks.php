@@ -232,11 +232,6 @@ try {
 		$age( (int) $draft->id );
 	}
 	$check( 'the first cart for an address is emailed, later ones held back', false === $goes_first( $a_cart ) && true === $goes_first( $b_cart ) && true === $goes_first( $forged ) );
-	$owner_id    = $user( $owner );
-	$stranger_id = $user( $email( 'stranger' ) );
-	$wpdb->update( "{$p}fc_abandoned_carts", [ 'user_id' => $stranger_id ], [ 'id' => $forged->id ] );
-	$check( 'control: a cart tied to another account does not go first', false === $goes_first( $a_cart ) && true === $goes_first( $forged ) );
-	$wpdb->update( "{$p}fc_abandoned_carts", [ 'user_id' => $owner_id ], [ 'id' => $b_cart->id ] );
 	// A cart no automation takes holds nothing back: the held-back cart would never be emailed.
 	$automations = AbCartHelper::getSortedAutomations( EddCartDriver::PROVIDER );
 	$automation  = $automations ? reset( $automations ) : null;
@@ -255,7 +250,11 @@ try {
 		$age( (int) $a_cart->id );
 		$check( 'control: the same cart is held back once an automation takes the first', true === $goes_first( $b_cart ) );
 	}
-
+	$owner_id    = $user( $owner );
+	$stranger_id = $user( $email( 'stranger' ) );
+	$wpdb->update( "{$p}fc_abandoned_carts", [ 'user_id' => $stranger_id ], [ 'id' => $forged->id ] );
+	$check( 'control: a cart tied to another account does not go first', false === $goes_first( $a_cart ) && true === $goes_first( $forged ) );
+	$wpdb->update( "{$p}fc_abandoned_carts", [ 'user_id' => $owner_id ], [ 'id' => $b_cart->id ] );
 	// Overlapping first saves from one browser settle on one row; another browser's draft stays.
 	$overlap = $email( 'overlap' );
 	$keep    = new ReflectionMethod( EddCartTracking::class, 'keepOneCartPerBrowser' );
