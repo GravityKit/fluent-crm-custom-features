@@ -153,7 +153,9 @@ try {
 	$assert( [] === $handoff( $future, $signFor( 'someone-else@example.test', $future ) ), "Another account's link restored a cart" );
 	$valid = $signFor( strtoupper( $email ), $future );
 	$assert( [ $id . ':1' ] === $handoff( $future, $valid ), 'The emailed link did not restore the cart' );
-	$assert( [ $id . ':0' ] === $handoff( $future, $valid, (string) $saved->checkout_key ), 'The browser that asked for the link lost its live cart' );
+	$cookieValue = new ReflectionMethod( EddCartTracking::class, 'cookieValue' );
+	$cookieValue->setAccessible( true );
+	$assert( [ $id . ':0' ] === $handoff( $future, $valid, $cookieValue->invoke( null, AbandonCartModel::find( $saved->id ) ) ), 'The browser that asked for the link lost its live cart' );
 	$assert( [ $id . ':1' ] === $handoff( $future, $valid, 'another-browsers-key' ), 'A browser holding another cart was not given the saved cart' );
 	// Anyone can save a cart under the address after the link is sent; the link must not restore it.
 	$changed       = AbandonCartModel::find( $saved->id );

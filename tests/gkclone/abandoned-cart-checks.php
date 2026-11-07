@@ -28,6 +28,13 @@ function t402_check( string $name, bool $pass, $detail = '' ) {
 	$results[] = [ 'check' => $name, 'pass' => $pass, 'detail' => $detail ];
 }
 
+// The signed cookie checkout sets for a cart (WEBSITE-498).
+function t402_cookie( AbandonCartModel $cart ): string {
+	$method = new ReflectionMethod( EddCartTracking::class, 'cookieValue' );
+	$method->setAccessible( true );
+	return (string) $method->invoke( null, $cart );
+}
+
 function t402_email( string $tag ): string {
 	global $run, $emails;
 	$e        = "t402-{$tag}-{$run}@gravitykit-t402.dev";
@@ -151,7 +158,7 @@ try {
 	$stored->status = 'processing';
 	$stored->cart   = array_merge( $stored->cart, [ 'recovery_discount' => [ 'code' => 'CART-T402-A' ], 'recovery_discounts' => [ 'bfcm' => [ 'code' => 'CART-T402-B' ] ] ] );
 	$stored->save();
-	$_COOKIE['fc_ab_edd_cart_token'] = $stored->checkout_key;
+	$_COOKIE['fc_ab_edd_cart_token'] = t402_cookie( $stored );
 	$tracker->syncCart( $real_email );
 	$after = AbandonCartModel::find( $stored->id );
 	t402_check(
@@ -178,7 +185,7 @@ try {
 	t402_check( 'control: same email still updates its own draft', $draft_again && (int) $draft_again->id === (int) $other->id, [ $draft_again ? $draft_again->id : null, $other->id ] );
 
 	// 3c. An error inside a cart hook never breaks add-to-cart.
-	$_COOKIE['fc_ab_edd_cart_token'] = $other->checkout_key;
+	$_COOKIE['fc_ab_edd_cart_token'] = t402_cookie( $other );
 	$boom = function () { throw new RuntimeException( 't402 boom' ); };
 	add_filter( 'customcrm/edd_ab_cart/ignored_email_domains', $boom );
 	$threw = null;
@@ -195,7 +202,7 @@ try {
 	// 4. A restore does not re-sync the cart item by item. Control: a normal add-to-cart does.
 	$after->cart_hash = 'sentinel';
 	$after->save();
-	$_COOKIE['fc_ab_edd_cart_token'] = $after->checkout_key;
+	$_COOKIE['fc_ab_edd_cart_token'] = t402_cookie( $after );
 	edd_empty_cart();
 	edd_add_to_cart( $download_id, null === $price_id ? [] : [ 'price_id' => $price_id ] );
 	$control_hash = AbandonCartModel::find( $after->id )->cart_hash;
@@ -1464,7 +1471,7 @@ katz.co",
 	$sibling   = $make( 'realsibling', 'processing' );
 	$real      = $make( 'realupgrade', 'processing' );
 	$real_run  = $start_run( $real );
-	$_COOKIE['fc_ab_edd_cart_token'] = $real->checkout_key;
+	$_COOKIE['fc_ab_edd_cart_token'] = t402_cookie( $real );
 	$recurring = [];
 	foreach ( $wp_filter['edd_sl_license_upgraded']->callbacks ?? [] as $priority => $callbacks ) {
 		foreach ( $callbacks as $cb ) {
