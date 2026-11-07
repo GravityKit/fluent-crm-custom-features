@@ -100,7 +100,7 @@ class EddLicenseActivationTracker {
 			$license  = $context['license'] ?? null;
 			$customer = $this->getCustomer( $license );
 
-			if ( ! $customer || $this->isInternalCustomer( $customer->email ) ) {
+			if ( ! $customer || self::isInternalCustomer( $customer->email ) ) {
 				return;
 			}
 
@@ -143,7 +143,7 @@ class EddLicenseActivationTracker {
 			$license  = $context['license'] ?? null;
 			$customer = $this->getCustomer( $license );
 
-			if ( ! $customer || $this->isInternalCustomer( $customer->email ) ) {
+			if ( ! $customer || self::isInternalCustomer( $customer->email ) ) {
 				return;
 			}
 
@@ -199,7 +199,7 @@ class EddLicenseActivationTracker {
 	 * @param string $email Contact email.
 	 * @return bool
 	 */
-	private function isInternalCustomer( string $email ): bool {
+	public static function isInternalCustomer( string $email ): bool {
 		$domains = apply_filters( 'gk/fluentcrm/internal_email_domains', [ 'gravitykit.com', 'gravityview.co' ] );
 		$at      = strrpos( $email, '@' );
 
@@ -313,7 +313,7 @@ class EddLicenseActivationTracker {
 	 *
 	 * @return object|null The API wrapper, or null when event tracking is unavailable.
 	 */
-	private static function eventTracker() {
+	public static function eventTracker() {
 		if ( ! function_exists( 'FluentCrmApi' ) ) {
 			return null;
 		}
