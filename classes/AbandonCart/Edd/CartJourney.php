@@ -114,7 +114,7 @@ class CartJourney {
 			return $section;
 		}
 
-		$html = '<h3>' . esc_html__( 'Upgrades and renewals', 'fluent-crm-custom-features' ) . '</h3><ul class="fcrm_event_tracking_lists">';
+		$html = '<div style="padding:0 20px 20px"><h3>' . esc_html__( 'Upgrades and renewals', 'fluent-crm-custom-features' ) . '</h3><ul class="fcrm_event_tracking_lists">';
 
 		foreach ( $events as $event ) {
 			$html .= '<li><p class="fcrm_event_tracking_title">' . esc_html( $event->title ) . '</p>';
@@ -127,7 +127,7 @@ class CartJourney {
 		$visits   = (string) ( $section['content_html'] ?? '' );
 		$is_empty = __( 'No journey found', 'conversion-bridge' ) === $visits; // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
 
-		$section['content_html'] = $html . '</ul>' . ( $is_empty ? '' : $visits );
+		$section['content_html'] = $html . '</ul></div>' . ( $is_empty ? '' : $visits );
 
 		return $section;
 	}
