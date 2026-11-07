@@ -55,12 +55,12 @@ Records when an upgrade or manual renewal starts and completes, apart from the c
 
 - **On the contact:** FluentCRM tracking events `upgrade_started`, `upgrade_completed`, `renewal_started`, `renewal_completed`, provider `edd`. Automations can start on "Tracking Event Recorded" or check them with Event Tracking conditions. That trigger only runs for subscribed contacts.
 - **Event values must stay scalar.** The contact page runs each JSON value through `wp_kses_post()`; an array there is a fatal on that contact's page. License IDs are stored as a comma list.
-- **Between the plugins, hooks only:** this plugin fires `customcrm/edd_cart/journey_started`; Block-Theme's `posthog-purchases.php` sends PostHog events and fires `gk/store/journey_completed`, which this plugin records. Without Block-Theme, starts are still recorded and completions are not.
+- **Between the plugins, hooks only:** this plugin fires `customcrm/edd_cart/journey_started`; Block-Theme's `posthog-purchases.php` sends PostHog events and fires `gk/store/journey-completed`, which this plugin records. Without Block-Theme, starts are still recorded and completions are not.
 - **Starts need a saved cart.** With a provider switched off in FluentCRM, or a shopper opted out, nothing starts, while completions still record.
 - **Once per cart is claimed per license, in a transient** (`customcrm_cart_journey_<journey>_<license>`, 30 days), because the checkout upgrade card deletes and recreates the row of a one-item cart. A completed order frees its licenses.
 - **Undoing a card swap leaves the start standing.** The customer did start; choosing the upgrade again does not count twice.
 - **No contact, no record.** This code never creates a contact, because that could start other automations.
-- Left out: FluentCRM's disabled roles, anyone switched to a customer with User Switching, and internal email domains (`gk/fluentcrm/internal_email_domains`), through the `gk/store/is_staff_session` filter. So a test order with a team address records nothing here or in the four PostHog events; test with another address.
+- Left out: FluentCRM's disabled roles, anyone switched to a customer with User Switching, and internal email domains (`gk/fluentcrm/internal_email_domains`), through the `gk/store/is-staff-session` filter. So a test order with a team address records nothing here or in the four PostHog events; test with another address.
 - Checks: `tests/gkclone/cart-journey-checks.php`.
 
 ## Upgrade email wording

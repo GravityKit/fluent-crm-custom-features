@@ -18,7 +18,7 @@ use FluentCrm\App\Modules\AbandonCart\AbCartHelper;
  *
  * This class owns "started", because it sees the cart: it records the event, then fires
  * `customcrm/edd_cart/journey_started`. The theme's mu-plugin owns "completed", because it sees the
- * order: it fires `gk/store/journey_completed`, and this class records that. Both are plain hooks,
+ * order: it fires `gk/store/journey-completed`, and this class records that. Both are plain hooks,
  * so either side keeps working without the other.
  *
  * A cart row can't say whether a cart already started: the checkout's upgrade offer empties a
@@ -49,8 +49,8 @@ class CartJourney {
 	 * Hooks the theme's mu-plugin calls. Nothing happens if it is not there.
 	 */
 	public static function register(): void {
-		add_action( 'gk/store/journey_completed', [ self::class, 'orderCompleted' ], 10, 1 );
-		add_filter( 'gk/store/is_staff_session', [ self::class, 'addStaffChecks' ], 10, 2 );
+		add_action( 'gk/store/journey-completed', [ self::class, 'orderCompleted' ], 10, 1 );
+		add_filter( 'gk/store/is-staff-session', [ self::class, 'addStaffChecks' ], 10, 2 );
 	}
 
 	/**
@@ -66,7 +66,7 @@ class CartJourney {
 			$journey     = self::JOURNEYS[ (string) $cart->provider ] ?? '';
 			$license_ids = self::licenseIds( $items );
 
-			$is_staff    = (bool) apply_filters( 'gk/store/is_staff_session', false, (string) $cart->email );
+			$is_staff    = (bool) apply_filters( 'gk/store/is-staff-session', false, (string) $cart->email );
 
 			if ( '' === $journey || ! $license_ids || $is_staff || ! self::claim( $journey, $license_ids ) ) {
 				return;
@@ -107,7 +107,7 @@ class CartJourney {
 	/**
 	 * Records a finished upgrade or renewal, and frees its licenses for a later cart.
 	 *
-	 * @param array<string,mixed> $completed See `gk/store/journey_completed`.
+	 * @param array<string,mixed> $completed See `gk/store/journey-completed`.
 	 */
 	public static function orderCompleted( $completed ): void {
 		$completed   = (array) $completed;

@@ -102,7 +102,7 @@ try {
 	$check( 'the renewal is on the contact', 1 === count( $events( $contact, 'renewal_started' ) ) );
 
 	// Finishing frees the licenses and is recorded.
-	do_action( 'gk/store/journey_completed', [ 'journey' => 'upgrade', 'order_type' => 'upgrade', 'order_id' => 77, 'email' => $contact->email, 'user_id' => 0, 'license_ids' => [ $lic ] ] );
+	do_action( 'gk/store/journey-completed', [ 'journey' => 'upgrade', 'order_type' => 'upgrade', 'order_id' => 77, 'email' => $contact->email, 'user_id' => 0, 'license_ids' => [ $lic ] ] );
 	$rows = $events( $contact, 'upgrade_completed' );
 	$check( 'a completed order is recorded', 1 === count( $rows ) && 77 === json_decode( (string) $rows[0]->value, true )['order_id'], $rows->toArray() );
 
@@ -113,9 +113,9 @@ try {
 
 	// Sessions the filter calls staff.
 	$before = count( $started );
-	add_filter( 'gk/store/is_staff_session', '__return_true', 99 );
+	add_filter( 'gk/store/is-staff-session', '__return_true', 99 );
 	CartJourney::cartSaved( $cart( $upgrade, $contact->email, 16 ), [ $item( $lic + 10 ) ] );
-	remove_filter( 'gk/store/is_staff_session', '__return_true', 99 );
+	remove_filter( 'gk/store/is-staff-session', '__return_true', 99 );
 	$check( 'a staff session starts nothing', $before === count( $started ), $started );
 	$check( 'a staff session claims nothing', false === get_transient( 'customcrm_cart_journey_upgrade_' . ( $lic + 10 ) ) );
 
@@ -124,26 +124,26 @@ try {
 	$staff = wp_insert_user( [ 'user_login' => 't544staff' . $run, 'user_email' => $email_for( 'staff' ), 'user_pass' => wp_generate_uuid4(), 'role' => 'support_provider' ] );
 	$buyer = wp_insert_user( [ 'user_login' => 't544buyer' . $run, 'user_email' => $email_for( 'buyer' ), 'user_pass' => wp_generate_uuid4(), 'role' => 'subscriber' ] );
 	wp_set_current_user( $staff );
-	$check( 'an excluded role counts as staff', in_array( 'support_provider', $roles, true ) && true === apply_filters( 'gk/store/is_staff_session', false ), $roles );
+	$check( 'an excluded role counts as staff', in_array( 'support_provider', $roles, true ) && true === apply_filters( 'gk/store/is-staff-session', false ), $roles );
 	wp_set_current_user( $buyer );
-	$check( 'a customer does not', false === apply_filters( 'gk/store/is_staff_session', false ) );
+	$check( 'a customer does not', false === apply_filters( 'gk/store/is-staff-session', false ) );
 	wp_set_current_user( 0 );
 
 	// Internal addresses, for a team member testing while logged out.
-	$check( 'an internal address counts as staff', true === apply_filters( 'gk/store/is_staff_session', false, 'someone@gravitykit.com' ) );
-	$check( 'an outside address does not', false === apply_filters( 'gk/store/is_staff_session', false, $contact->email ) );
+	$check( 'an internal address counts as staff', true === apply_filters( 'gk/store/is-staff-session', false, 'someone@gravitykit.com' ) );
+	$check( 'an outside address does not', false === apply_filters( 'gk/store/is-staff-session', false, $contact->email ) );
 
 	// The right contact: the email first, then the user.
 	$linked          = $contact_for( 'buyer' );
 	$linked->user_id = (int) $buyer;
 	$linked->save();
-	do_action( 'gk/store/journey_completed', [ 'journey' => 'renewal', 'order_type' => 'manual_renewal', 'order_id' => 78, 'email' => 'typed-' . $email_for( 'other' ), 'user_id' => (int) $buyer, 'license_ids' => [] ] );
+	do_action( 'gk/store/journey-completed', [ 'journey' => 'renewal', 'order_type' => 'manual_renewal', 'order_id' => 78, 'email' => 'typed-' . $email_for( 'other' ), 'user_id' => (int) $buyer, 'license_ids' => [] ] );
 	$check( 'another typed address falls back to the user\'s contact', 1 === count( $events( $linked, 'renewal_completed' ) ) );
 
 	// No contact: nothing is created.
 	$ghost = $email_for( 'ghost' );
 	CartJourney::cartSaved( $cart( $upgrade, $ghost, 17 ), [ $item( $lic + 20 ) ] );
-	do_action( 'gk/store/journey_completed', [ 'journey' => 'upgrade', 'order_type' => 'upgrade', 'order_id' => 79, 'email' => $ghost, 'user_id' => 0, 'license_ids' => [ $lic + 20 ] ] );
+	do_action( 'gk/store/journey-completed', [ 'journey' => 'upgrade', 'order_type' => 'upgrade', 'order_id' => 79, 'email' => $ghost, 'user_id' => 0, 'license_ids' => [ $lic + 20 ] ] );
 	$check( 'no contact is ever created', ! Subscriber::where( 'email', $ghost )->first() );
 	$check( 'the start still goes to PostHog without a contact', $lic + 20 === end( $started )['license_ids'][0], end( $started ) );
 
@@ -173,7 +173,7 @@ try {
 
 	// Without the theme's listener the plugin still records the start.
 	remove_all_actions( 'customcrm/edd_cart/journey_started' );
-	remove_all_filters( 'gk/store/is_staff_session' );
+	remove_all_filters( 'gk/store/is-staff-session' );
 	$alone = $contact_for( 'alone' );
 	CartJourney::cartSaved( $cart( $upgrade, $alone->email, 19 ), [ $item( $lic + 40 ) ] );
 	$check( 'nothing listening is fine', 1 === count( $events( $alone, 'upgrade_started' ) ) );
