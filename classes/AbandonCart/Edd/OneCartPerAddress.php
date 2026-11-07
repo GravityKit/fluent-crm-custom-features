@@ -3,6 +3,7 @@
 namespace CustomCRM\AbandonCart\Edd;
 
 use FluentCrm\App\Modules\AbandonCart\AbandonCartModel;
+use FluentCrm\App\Modules\AbandonCart\AbandonCartRunner;
 use FluentCrm\App\Modules\AbandonCart\AbCartHelper;
 
 /**
@@ -43,27 +44,41 @@ class OneCartPerAddress {
 			return self::hold( $cart, __( 'Held back: this address opted out of cart emails at checkout', 'fluent-crm-custom-features' ) );
 		}
 
-		// Only a draft the runner can pick now goes first, as AbandonCart::maybeRunAbRunner() picks them:
-		// a draft still being changed can be emptied or bought before then, and a held-back cart is
-		// never looked at again.
+		// Only a draft the runner can pick now goes first, as AbandonCart::maybeRunAbRunner() picks them,
+		// and only if an automation takes it: automations can have cart conditions, and a held-back cart
+		// is never looked at again.
 		$minutes  = (int) AbCartHelper::getSetting( 'capture_after_minutes', 5 );
 		$cutoff   = gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - $minutes * MINUTE_IN_SECONDS );
 		$owner    = get_user_by( 'email', (string) $cart->email );
 		$owner_id = $owner ? (int) $owner->ID : 0;
-		$drafts   = function () use ( $cart, $cutoff ) {
-			return AbandonCartModel::where( 'provider', EddCartDriver::PROVIDER )
-				->where( 'email', $cart->email )
-				->where( 'id', '!=', $cart->id )
-				->where( 'status', 'draft' )
-				->where( 'updated_at', '<=', $cutoff );
-		};
+		$drafts   = AbandonCartModel::where( 'provider', EddCartDriver::PROVIDER )
+			->where( 'email', $cart->email )
+			->where( 'id', '!=', $cart->id )
+			->where( 'status', 'draft' )
+			->where( 'updated_at', '<=', $cutoff )
+			->orderBy( 'id' )
+			->get();
 
 		$is_account = $owner_id && (int) $cart->user_id === $owner_id;
-		if ( $is_account ) {
-			$first = $drafts()->where( 'user_id', $owner_id )->where( 'id', '<', $cart->id )->orderBy( 'id' )->first();
-		} else {
-			$account_cart = $owner_id ? $drafts()->where( 'user_id', $owner_id )->orderBy( 'id' )->first() : null;
-			$first        = $account_cart ?: $drafts()->where( 'id', '<', $cart->id )->orderBy( 'id' )->first();
+		$first      = null;
+
+		foreach ( $drafts as $draft ) {
+			$is_older   = (int) $draft->id < (int) $cart->id;
+			$is_owners  = $owner_id && (int) $draft->user_id === $owner_id;
+			$goes_first = $is_account ? $is_owners && $is_older : $is_owners || $is_older;
+			$is_emailed = $goes_first && is_array( ( new AbandonCartRunner() )->getEligibleAutomation( $draft ) );
+
+			if ( ! $is_emailed ) {
+				continue;
+			}
+
+			$first = $first ?: $draft;
+
+			// The account's cart goes before an older one from a logged-out browser.
+			if ( $is_owners ) {
+				$first = $draft;
+				break;
+			}
 		}
 
 		if ( ! $first ) {

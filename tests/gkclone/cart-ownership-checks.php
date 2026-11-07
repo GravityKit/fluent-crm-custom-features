@@ -2,7 +2,8 @@
 /**
  * WEBSITE-498: each browser saves its own cart, and checkout sign-in links and cart emails work together.
  * Creates t498-* fixtures (a product, accounts, carts, orders, a discount) and deletes them; blocks
- * outbound HTTP while it runs. Needs only EDD and FluentCRM, so it runs on a fresh gkclone store.
+ * outbound HTTP while it runs. Needs EDD, FluentCRM and a published new-purchase cart automation,
+ * because only a cart an automation takes holds another back.
  *
  *   docker cp tests/gkclone/cart-ownership-checks.php <cli>:/tmp/ && docker exec <cli> wp eval-file /tmp/cart-ownership-checks.php
  */
@@ -231,11 +232,48 @@ try {
 		$age( (int) $draft->id );
 	}
 	$check( 'the first cart for an address is emailed, later ones held back', false === $goes_first( $a_cart ) && true === $goes_first( $b_cart ) && true === $goes_first( $forged ) );
+	// A cart no automation takes holds nothing back: the held-back cart would never be emailed.
+	$automations = AbCartHelper::getSortedAutomations( EddCartDriver::PROVIDER );
+	$automation  = $automations ? reset( $automations ) : null;
+	if ( $automation ) {
+		$conditions = $automation->conditions;
+		$refuse     = function () {
+			return false;
+		};
+		add_filter( 'fluentcrm_automation_conditions_assess_t547', $refuse );
+		FluentCrm\App\Models\Funnel::where( 'id', $automation->id )->update( [ 'conditions' => maybe_serialize( array_merge( (array) $conditions, [ 'cart_conditions' => [ [ [ 'source' => [ 't547', 'x' ], 'operator' => '=', 'value' => '1' ] ] ] ] ) ) ] );
+		$held_without_automation = $goes_first( $b_cart );
+		FluentCrm\App\Models\Funnel::where( 'id', $automation->id )->update( [ 'conditions' => maybe_serialize( $conditions ) ] );
+		remove_filter( 'fluentcrm_automation_conditions_assess_t547', $refuse );
+		$check( 'a cart no automation takes does not hold another back', false === $held_without_automation );
+		// Checking the conditions created the address's contact, which saved the first cart.
+		$age( (int) $a_cart->id );
+		$check( 'control: the same cart is held back once an automation takes the first', true === $goes_first( $b_cart ) );
+	}
 	$owner_id    = $user( $owner );
 	$stranger_id = $user( $email( 'stranger' ) );
 	$wpdb->update( "{$p}fc_abandoned_carts", [ 'user_id' => $stranger_id ], [ 'id' => $forged->id ] );
 	$check( 'control: a cart tied to another account does not go first', false === $goes_first( $a_cart ) && true === $goes_first( $forged ) );
 	$wpdb->update( "{$p}fc_abandoned_carts", [ 'user_id' => $owner_id ], [ 'id' => $b_cart->id ] );
+	// Overlapping first saves from one browser settle on one row; another browser's draft stays.
+	$overlap = $email( 'overlap' );
+	$keep    = new ReflectionMethod( EddCartTracking::class, 'keepOneCartPerBrowser' );
+	$keep->setAccessible( true );
+	$tagged  = function ( string $tag ) use ( $make_cart, $overlap, $row ) {
+		$draft       = $make_cart( $overlap, 'draft' );
+		$data        = (array) $draft->cart;
+		$data['browser'] = $tag;
+		$draft->cart = $data;
+		$draft->save();
+		return $row( $draft );
+	};
+	$first_save  = $tagged( 'one' );
+	$second_save = $tagged( 'one' );
+	$other_save  = $tagged( 'two' );
+	$kept        = $keep->invoke( null, $second_save, [ 'full_name' => 'Newest Save', 'cart' => $second_save->cart ] );
+	$check( 'overlapping saves from one browser keep the first row with the latest data', (int) $kept->id === (int) $first_save->id && 'Newest Save' === $row( $first_save )->full_name && null === $row( $second_save ) );
+	$check( "control: another browser's draft for the address stays", null !== $row( $other_save ) );
+
 	$check( "the cart tied to the address's account goes first", true === $goes_first( $a_cart ) && false === $goes_first( $b_cart ) );
 	$wpdb->update( "{$p}fc_abandoned_carts", [ 'updated_at' => current_time( 'mysql' ) ], [ 'id' => $b_cart->id ] );
 	$check( 'a draft still being changed does not hold the others back', false === $goes_first( $a_cart ) );
@@ -345,6 +383,7 @@ try {
 	$held_items = $in_session();
 	wp_set_current_user( 0 );
 	$check( 'the sign-in link still restores a cart the runner held back', [ $product . ':0' ] === $held_items, $held_items );
+	$check( 'a restored held-back cart is open again, so the order finds it', 'draft' === $row( $r )->status, $row( $r )->status );
 	$wpdb->update( "{$p}fc_abandoned_carts", [ 'status' => 'draft' ], [ 'id' => $r->id ] );
 
 	// 6. Back from a reminder, then signed in on another device: same cart and discount code; the purchase recovers it.
