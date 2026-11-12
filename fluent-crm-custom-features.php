@@ -111,6 +111,15 @@ add_action(
 		// Track EDD license activations as FluentCRM events.
 		( new \CustomCRM\EddLicenseActivationTracker() )->register();
 
+		// Agency onboarding: progress fields and events, and the reward-code step. BaseAction's
+		// constructor registers the step; calling register() again would run it twice per contact.
+		( new \CustomCRM\AgencyProgressTracker() )->register();
+		new \CustomCRM\Actions\AgencyRewardCodeAction();
+
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			\WP_CLI::add_command( 'gk-agency-crm', \CustomCRM\AgencyProgressCommand::class );
+		}
+
 		// Extends a Pro class, so it cannot even be loaded without Pro. Leaving Pro's own handler
 		// in place is the right fallback: the redirect still works, it just loses the query
 		// parameters this override exists to preserve.

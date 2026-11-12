@@ -1,0 +1,567 @@
+{
+ "title": "Agency onboarding",
+ "trigger_name": "fluentcrm_contact_added_to_lists",
+ "status": "draft",
+ "settings": {
+  "lists": [
+   "24"
+  ],
+  "select_type": "any"
+ },
+ "conditions": {
+  "run_multiple": "no"
+ },
+ "sticky_note": {
+  "content": "Starts when a contact joins the Agency list (an account gets agency tools). Each check reads the gk_agency_* fields that fluent-crm-custom-features keeps up to date, so a step the agency already did is skipped. Built by funnels/build-agency-onboarding.py (WEBSITE-578)."
+ },
+ "sequences": [
+  {
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Agency 1: Your agency tools are on",
+   "description": "Your agency tools are on",
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Agency 1: Your agency tools are on",
+     "email_subject": "Your agency tools are on",
+     "email_pre_header": "Keep each client's licenses in one place, and let clients pay their own renewals.",
+     "email_body": "<!-- wp:group {\"backgroundColor\":\"primary\",\"layout\":{\"type\":\"constrained\"}} -->\n<div class=\"wp-block-group has-primary-background-color has-background\"><!-- wp:image {\"lightbox\":{\"enabled\":false},\"id\":881668,\"width\":\"200px\",\"sizeSlug\":\"full\",\"linkDestination\":\"custom\",\"align\":\"center\"} -->\n<figure class=\"wp-block-image aligncenter size-full is-resized\"><a href=\"https://www.gravitykit.com/account/agency/\"><img src=\"https://www.gravitykit.com/wp-content/uploads/2026/02/logo-5.png\" alt=\"GravityKit\" class=\"wp-image-881668\" style=\"width:200px;height:auto\"/></a></figure>\n<!-- /wp:image --></div>\n<!-- /wp:group -->\n\n<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Your GravityKit account is now set up for an agency. That means you can:</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\"><!-- wp:list-item -->\n<li><strong>Add your clients</strong>, so each one has an account with you as their agency.</li>\n<!-- /wp:list-item -->\n\n<!-- wp:list-item -->\n<li><strong>Assign licenses to clients.</strong> They can download the plugins and see their licenses, and you still own and pay for them.</li>\n<!-- /wp:list-item -->\n\n<!-- wp:list-item -->\n<li><strong>Email a client a payment link</strong> when a license is due, so they pay the renewal themselves. They don't need an account or your password.</li>\n<!-- /wp:list-item --></ul>\n<!-- /wp:list -->\n\n<!-- wp:paragraph -->\n<p>Two minutes to start: give your agency the name your clients know. It signs every email we send them for you.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n<div class=\"wp-block-buttons\"><!-- wp:button {\"style\":{\"color\":{\"background\":\"#1877f2\"}}} -->\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link has-background wp-element-button\" href=\"https://www.gravitykit.com/account/agency/settings\" style=\"background-color:#1877f2\">Name My Agency</a></div>\n<!-- /wp:button --></div>\n<!-- /wp:buttons -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:paragraph -->\n<p>When you assign your first license to a client, we'll send you a $100 code toward your next license.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Questions? Just reply. I read every email.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Zack Katz<br>Founder, GravityKit</p>\n<!-- /wp:paragraph -->",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "agency-welcome",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   },
+   "id": 1,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 3 days",
+   "description": "",
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "3",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   },
+   "id": 2,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Resume on next weekday at 09:00",
+   "description": "",
+   "settings": {
+    "wait_type": "to_day",
+    "to_day": [
+     "Mon",
+     "Tue",
+     "Wed",
+     "Thu",
+     "Fri"
+    ],
+    "to_day_time": "09:00"
+   },
+   "id": 3,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "funnel_condition",
+   "type": "conditional",
+   "title": "Added a client?",
+   "description": "",
+   "settings": {
+    "conditions": [
+     [
+      {
+       "source": [
+        "custom_fields",
+        "gk_agency_clients"
+       ],
+       "operator": ">",
+       "value": "0"
+      }
+     ]
+    ]
+   },
+   "id": 4,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Agency 2: Add your first client",
+   "description": "Add your first client",
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Agency 2: Add your first client",
+     "email_subject": "Add your first client",
+     "email_pre_header": "Name, email, done. You choose whether we email them.",
+     "email_body": "<!-- wp:group {\"backgroundColor\":\"primary\",\"layout\":{\"type\":\"constrained\"}} -->\n<div class=\"wp-block-group has-primary-background-color has-background\"><!-- wp:image {\"lightbox\":{\"enabled\":false},\"id\":881668,\"width\":\"200px\",\"sizeSlug\":\"full\",\"linkDestination\":\"custom\",\"align\":\"center\"} -->\n<figure class=\"wp-block-image aligncenter size-full is-resized\"><a href=\"https://www.gravitykit.com/account/agency/add-client\"><img src=\"https://www.gravitykit.com/wp-content/uploads/2026/02/logo-5.png\" alt=\"GravityKit\" class=\"wp-image-881668\" style=\"width:200px;height:auto\"/></a></figure>\n<!-- /wp:image --></div>\n<!-- /wp:group -->\n\n<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Your agency tools are ready, and the first step is adding a client. You need their first name, last name and email address.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n<div class=\"wp-block-buttons\"><!-- wp:button {\"style\":{\"color\":{\"background\":\"#1877f2\"}}} -->\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link has-background wp-element-button\" href=\"https://www.gravitykit.com/account/agency/add-client\" style=\"background-color:#1877f2\">Add a Client</a></div>\n<!-- /wp:button --></div>\n<!-- /wp:buttons -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:paragraph -->\n<p>We email them an invitation to sign in, signed with {{contact.custom.gk_agency_name|your agency}}. If you'd rather they never hear from us, tick \"Don't email this client unless I ask you to\" and we'll send their notices to you instead.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Then assign them a license and we'll send you a $100 code toward your next one.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Zack Katz<br>Founder, GravityKit</p>\n<!-- /wp:paragraph -->",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "agency-add-client",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   },
+   "id": 5,
+   "parent_id": 4,
+   "condition_type": "no"
+  },
+  {
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 4 days",
+   "description": "",
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "4",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   },
+   "id": 6,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Resume on next weekday at 09:00",
+   "description": "",
+   "settings": {
+    "wait_type": "to_day",
+    "to_day": [
+     "Mon",
+     "Tue",
+     "Wed",
+     "Thu",
+     "Fri"
+    ],
+    "to_day_time": "09:00"
+   },
+   "id": 7,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "funnel_condition",
+   "type": "conditional",
+   "title": "Added a client, but no license assigned?",
+   "description": "",
+   "settings": {
+    "conditions": [
+     [
+      {
+       "source": [
+        "custom_fields",
+        "gk_agency_clients"
+       ],
+       "operator": ">",
+       "value": "0"
+      },
+      {
+       "source": [
+        "custom_fields",
+        "gk_agency_licenses_assigned"
+       ],
+       "operator": "=",
+       "value": "0"
+      }
+     ]
+    ]
+   },
+   "id": 8,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Agency 3: Assign a license",
+   "description": "Assign a license to your client, get $100 off your next one",
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Agency 3: Assign a license",
+     "email_subject": "Assign a license to your client, get $100 off your next one",
+     "email_pre_header": "Your client can download the plugins. You keep the license.",
+     "email_body": "<!-- wp:group {\"backgroundColor\":\"primary\",\"layout\":{\"type\":\"constrained\"}} -->\n<div class=\"wp-block-group has-primary-background-color has-background\"><!-- wp:image {\"lightbox\":{\"enabled\":false},\"id\":881668,\"width\":\"200px\",\"sizeSlug\":\"full\",\"linkDestination\":\"custom\",\"align\":\"center\"} -->\n<figure class=\"wp-block-image aligncenter size-full is-resized\"><a href=\"https://www.gravitykit.com/account/agency/licenses\"><img src=\"https://www.gravitykit.com/wp-content/uploads/2026/02/logo-5.png\" alt=\"GravityKit\" class=\"wp-image-881668\" style=\"width:200px;height:auto\"/></a></figure>\n<!-- /wp:image --></div>\n<!-- /wp:group -->\n\n<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>You've added a client. Next, assign them a license:</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:list {\"ordered\":true} -->\n<ol class=\"wp-block-list\"><!-- wp:list-item -->\n<li>Open <strong>Agency &gt; Licenses</strong>.</li>\n<!-- /wp:list-item -->\n\n<!-- wp:list-item -->\n<li>Pick a license and choose <strong>Assign to a client</strong>.</li>\n<!-- /wp:list-item --></ol>\n<!-- /wp:list -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n<div class=\"wp-block-buttons\"><!-- wp:button {\"style\":{\"color\":{\"background\":\"#1877f2\"}}} -->\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link has-background wp-element-button\" href=\"https://www.gravitykit.com/account/agency/licenses\" style=\"background-color:#1877f2\">Assign a License</a></div>\n<!-- /wp:button --></div>\n<!-- /wp:buttons -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:paragraph -->\n<p>Your client can then download the plugins and see the license in their own account. You still own it, pay for it, and can take it back at any time.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Once you've assigned your first license, we'll email you a $100 code toward your next license.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Zack Katz<br>Founder, GravityKit</p>\n<!-- /wp:paragraph -->",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "agency-assign",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   },
+   "id": 9,
+   "parent_id": 8,
+   "condition_type": "yes"
+  },
+  {
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 7 days",
+   "description": "",
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "7",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   },
+   "id": 10,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Resume on next weekday at 09:00",
+   "description": "",
+   "settings": {
+    "wait_type": "to_day",
+    "to_day": [
+     "Mon",
+     "Tue",
+     "Wed",
+     "Thu",
+     "Fri"
+    ],
+    "to_day_time": "09:00"
+   },
+   "id": 11,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "funnel_condition",
+   "type": "conditional",
+   "title": "Assigned a license?",
+   "description": "",
+   "settings": {
+    "conditions": [
+     [
+      {
+       "source": [
+        "custom_fields",
+        "gk_agency_licenses_assigned"
+       ],
+       "operator": ">",
+       "value": "0"
+      }
+     ]
+    ]
+   },
+   "id": 12,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Agency 4: How do you handle client licenses?",
+   "description": "How do you handle client licenses today?",
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Agency 4: How do you handle client licenses?",
+     "email_subject": "How do you handle client licenses today?",
+     "email_pre_header": "One question, and your answer goes straight to me.",
+     "email_body": "<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>A couple of weeks ago your account was set up for an agency, but you haven't assigned a license to a client yet. That's fine. I'd like to learn why.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>How do you handle plugin licenses for your clients today? Do you buy them and keep them, have clients buy their own, or something else?</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Please just reply. I read every answer, and it decides what we build next for agencies.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Zack Katz<br>Founder, GravityKit</p>\n<!-- /wp:paragraph -->",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "agency-question",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   },
+   "id": 13,
+   "parent_id": 12,
+   "condition_type": "no"
+  },
+  {
+   "action_name": "end_this_funnel",
+   "type": "action",
+   "title": "End This Funnel Here",
+   "description": "",
+   "settings": {},
+   "id": 14,
+   "parent_id": 12,
+   "condition_type": "no"
+  },
+  {
+   "action_name": "funnel_condition",
+   "type": "conditional",
+   "title": "Sent a payment link?",
+   "description": "",
+   "settings": {
+    "conditions": [
+     [
+      {
+       "source": [
+        "custom_fields",
+        "gk_agency_pay_links"
+       ],
+       "operator": ">",
+       "value": "0"
+      }
+     ]
+    ]
+   },
+   "id": 15,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Agency 5: Let clients pay their renewals",
+   "description": "Let clients pay their own renewals",
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Agency 5: Let clients pay their renewals",
+     "email_subject": "Let clients pay their own renewals",
+     "email_pre_header": "Email a payment link: your client pays, the license stays with you.",
+     "email_body": "<!-- wp:group {\"backgroundColor\":\"primary\",\"layout\":{\"type\":\"constrained\"}} -->\n<div class=\"wp-block-group has-primary-background-color has-background\"><!-- wp:image {\"lightbox\":{\"enabled\":false},\"id\":881668,\"width\":\"200px\",\"sizeSlug\":\"full\",\"linkDestination\":\"custom\",\"align\":\"center\"} -->\n<figure class=\"wp-block-image aligncenter size-full is-resized\"><a href=\"https://www.gravitykit.com/account/agency/licenses\"><img src=\"https://www.gravitykit.com/wp-content/uploads/2026/02/logo-5.png\" alt=\"GravityKit\" class=\"wp-image-881668\" style=\"width:200px;height:auto\"/></a></figure>\n<!-- /wp:image --></div>\n<!-- /wp:group -->\n\n<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>When a client's license is up for renewal, you don't have to pay it and bill them. Send them a payment link instead:</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\"><!-- wp:list-item -->\n<li>Open the license in <strong>Agency &gt; Licenses</strong>. Under <strong>Payment link</strong>, choose <strong>Email the client</strong>.</li>\n<!-- /wp:list-item -->\n\n<!-- wp:list-item -->\n<li>We email your client a link to pay the renewal by card. It works once and lasts 30 days.</li>\n<!-- /wp:list-item -->\n\n<!-- wp:list-item -->\n<li>You get an email when they've paid. The license, receipt and renewal stay in your account.</li>\n<!-- /wp:list-item --></ul>\n<!-- /wp:list -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n<div class=\"wp-block-buttons\"><!-- wp:button {\"style\":{\"color\":{\"background\":\"#1877f2\"}}} -->\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link has-background wp-element-button\" href=\"https://www.gravitykit.com/account/agency/licenses\" style=\"background-color:#1877f2\">Go to Licenses</a></div>\n<!-- /wp:button --></div>\n<!-- /wp:buttons -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:paragraph -->\n<p>Your client doesn't need an account or your password to pay.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Zack Katz<br>Founder, GravityKit</p>\n<!-- /wp:paragraph -->",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "agency-pay-links",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   },
+   "id": 16,
+   "parent_id": 15,
+   "condition_type": "no"
+  },
+  {
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 14 days",
+   "description": "",
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "14",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   },
+   "id": 17,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Resume on next weekday at 09:00",
+   "description": "",
+   "settings": {
+    "wait_type": "to_day",
+    "to_day": [
+     "Mon",
+     "Tue",
+     "Wed",
+     "Thu",
+     "Fri"
+    ],
+    "to_day_time": "09:00"
+   },
+   "id": 18,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Agency 6: What would make this better?",
+   "description": "What would make this work better for your agency?",
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Agency 6: What would make this better?",
+     "email_subject": "What would make this work better for your agency?",
+     "email_pre_header": "One question about your agency.",
+     "email_body": "<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>You've been using GravityKit's agency tools for a few weeks. Thank you.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>What's still harder than it should be when you manage plugins for clients? Anything from billing to support to handing a site over.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Please just reply. I read every answer.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Zack Katz<br>Founder, GravityKit</p>\n<!-- /wp:paragraph -->",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "agency-feedback",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   },
+   "id": 19,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "end_this_funnel",
+   "type": "action",
+   "title": "End This Funnel Here",
+   "description": "",
+   "settings": {},
+   "id": 20,
+   "parent_id": 0,
+   "condition_type": null
+  }
+ ]
+}

@@ -1,0 +1,189 @@
+{
+ "title": "Agency reward",
+ "trigger_name": "fluent_crm/event_tracked",
+ "status": "draft",
+ "settings": {
+  "event_key": "agency_license_assigned",
+  "minimum_event_count": 1
+ },
+ "conditions": {
+  "value_conditions": [
+   []
+  ],
+  "run_multiple": "no",
+  "dont_run_on_active": "yes"
+ },
+ "sticky_note": {
+  "content": "Starts the first time an agency assigns a license to a client. Creates a single-use $100 EDD code (one per contact, ever), emails it, and reminds once two weeks before it expires unless it was used. Built by funnels/build-agency-onboarding.py (WEBSITE-578)."
+ },
+ "sequences": [
+  {
+   "action_name": "gk_agency_reward_code",
+   "type": "action",
+   "title": "Create agency reward code",
+   "description": "$100 off, single use, 60 days",
+   "settings": {
+    "amount": 100,
+    "expiry_days": 60,
+    "min_amount": 0,
+    "prefix": "AGENCY"
+   },
+   "id": 1,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Reward 1: Your $100 code",
+   "description": "Your $100 code, for assigning your first client license",
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Reward 1: Your $100 code",
+     "email_subject": "Your $100 code, for assigning your first client license",
+     "email_pre_header": "Use it on your next license. It works once and expires {{contact.custom.gk_agency_reward_expires}}.",
+     "email_body": "<!-- wp:group {\"backgroundColor\":\"primary\",\"layout\":{\"type\":\"constrained\"}} -->\n<div class=\"wp-block-group has-primary-background-color has-background\"><!-- wp:image {\"lightbox\":{\"enabled\":false},\"id\":881668,\"width\":\"200px\",\"sizeSlug\":\"full\",\"linkDestination\":\"custom\",\"align\":\"center\"} -->\n<figure class=\"wp-block-image aligncenter size-full is-resized\"><a href=\"https://www.gravitykit.com/pricing/\"><img src=\"https://www.gravitykit.com/wp-content/uploads/2026/02/logo-5.png\" alt=\"GravityKit\" class=\"wp-image-881668\" style=\"width:200px;height:auto\"/></a></figure>\n<!-- /wp:image --></div>\n<!-- /wp:group -->\n\n<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>You assigned your first license to a client. Thank you for trying the agency tools. Here's $100 toward your next license:</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p><strong style=\"font-size:22px;letter-spacing:2px;\">{{contact.custom.gk_agency_reward_code}}</strong></p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Enter it at checkout. It works once and expires on {{contact.custom.gk_agency_reward_expires}}.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n<div class=\"wp-block-buttons\"><!-- wp:button {\"style\":{\"color\":{\"background\":\"#1877f2\"}}} -->\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link has-background wp-element-button\" href=\"https://www.gravitykit.com/pricing/\" style=\"background-color:#1877f2\">Buy a License</a></div>\n<!-- /wp:button --></div>\n<!-- /wp:buttons -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:paragraph -->\n<p>Buying for a client? Add their name and email at checkout and the license is assigned to them for you.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Zack Katz<br>Founder, GravityKit</p>\n<!-- /wp:paragraph -->",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "agency-reward",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   },
+   "id": 2,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "fluentcrm_wait_times",
+   "type": "action",
+   "title": "Wait 46 days",
+   "description": "",
+   "settings": {
+    "wait_type": "unit_wait",
+    "wait_time_amount": "46",
+    "wait_time_unit": "days",
+    "is_timestamp_wait": "",
+    "wait_date_time": "",
+    "to_day": [],
+    "to_day_time": ""
+   },
+   "id": 3,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "funnel_condition",
+   "type": "conditional",
+   "title": "Used the code?",
+   "description": "",
+   "settings": {
+    "conditions": [
+     [
+      {
+       "source": [
+        "custom_fields",
+        "gk_agency_reward_used"
+       ],
+       "operator": "=",
+       "value": "1"
+      }
+     ]
+    ]
+   },
+   "id": 4,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "end_this_funnel",
+   "type": "action",
+   "title": "End This Funnel Here",
+   "description": "",
+   "settings": {},
+   "id": 5,
+   "parent_id": 4,
+   "condition_type": "yes"
+  },
+  {
+   "action_name": "send_custom_email",
+   "type": "action",
+   "title": "Reward 2: Your code expires soon",
+   "description": "Your $100 code expires on {{contact.custom.gk_agency_reward_expires}}",
+   "settings": {
+    "reference_campaign": "",
+    "send_email_to_type": "contact",
+    "send_email_custom": "",
+    "is_scheduled": "no",
+    "scheduled_at": "",
+    "skip_if_overdue": "no",
+    "mailer_settings": {
+     "from_name": "",
+     "from_email": "",
+     "reply_to_name": "",
+     "reply_to_email": "",
+     "is_custom": "no"
+    },
+    "campaign": {
+     "title": "Reward 2: Your code expires soon",
+     "email_subject": "Your $100 code expires on {{contact.custom.gk_agency_reward_expires}}",
+     "email_pre_header": "Code {{contact.custom.gk_agency_reward_code}}, for your next license.",
+     "email_body": "<!-- wp:paragraph {\"fontSize\":\"filter-md\"} -->\n<p class=\"has-filter-md-font-size\">Hi {{contact.first_name|there}},</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>A reminder that your $100 code expires on {{contact.custom.gk_agency_reward_expires}}:</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p><strong style=\"font-size:22px;letter-spacing:2px;\">{{contact.custom.gk_agency_reward_code}}</strong></p>\n<!-- /wp:paragraph -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:buttons {\"layout\":{\"type\":\"flex\",\"justifyContent\":\"center\"}} -->\n<div class=\"wp-block-buttons\"><!-- wp:button {\"style\":{\"color\":{\"background\":\"#1877f2\"}}} -->\n<div class=\"wp-block-button\"><a class=\"wp-block-button__link has-background wp-element-button\" href=\"https://www.gravitykit.com/pricing/\" style=\"background-color:#1877f2\">Buy a License</a></div>\n<!-- /wp:button --></div>\n<!-- /wp:buttons -->\n\n<!-- wp:spacer {\"height\":\"10px\"} -->\n<div style=\"height:10px\" aria-hidden=\"true\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:paragraph -->\n<p>Zack Katz<br>Founder, GravityKit</p>\n<!-- /wp:paragraph -->",
+     "design_template": "simple",
+     "utm_status": 1,
+     "utm_source": "fluentcrm",
+     "utm_medium": "email",
+     "utm_campaign": "agency-reward-reminder",
+     "utm_term": "",
+     "utm_content": "",
+     "settings": {
+      "mailer_settings": {
+       "from_name": "",
+       "from_email": "",
+       "reply_to_name": "",
+       "reply_to_email": "",
+       "is_custom": "no"
+      }
+     }
+    }
+   },
+   "id": 6,
+   "parent_id": 0,
+   "condition_type": null
+  },
+  {
+   "action_name": "end_this_funnel",
+   "type": "action",
+   "title": "End This Funnel Here",
+   "description": "",
+   "settings": {},
+   "id": 7,
+   "parent_id": 0,
+   "condition_type": null
+  }
+ ]
+}

@@ -66,6 +66,21 @@ Records when an upgrade or manual renewal starts and completes, apart from the c
 - Left out: FluentCRM's disabled roles, anyone switched to a customer with User Switching, and internal email domains (`gk/fluentcrm/internal_email_domains`), through the `gk/store/is-staff-session` filter. So a test order with a team address records nothing here or in the four PostHog events; test with another address.
 - Checks: `tests/gkclone/cart-journey-checks.php`.
 
+## Agency onboarding automations (WEBSITE-578)
+
+| Automation | Trigger | Builder |
+|---|---|---|
+| "Agency onboarding" | contact added to the "Agency" list (id 24) | `funnels/build-agency-onboarding.py` |
+| "Agency reward" | event `agency_license_assigned` | same builder |
+
+- `AgencyProgressTracker` listens to the agency package's actions (Block-Theme `mu-plugin/gravitykit/Agency`) and rewrites the owner's `gk_agency_*` contact fields by recounting the agency tables, so a missed hook or a retry ends at the same numbers. It also records one event per step (`agency_client_added`, `agency_license_assigned`, `agency_pay_link_sent`, …). The automations branch on the fields, not the events.
+- `wp gk-agency-crm sync [--dry-run]` writes the fields for agencies that existed before the tracker. It records no events and starts no automation.
+- "Create agency reward code" (`Actions/AgencyRewardCodeAction`) makes a single-use flat EDD code, `AGENCY-` plus 6 characters, once per contact ever. `AgencyProgressTracker::onPurchase()` sets `gk_agency_reward_used` when an order uses an `AGENCY-` code, which skips the reminder.
+- **Don't call `register()` on a FluentCRM `BaseAction`.** Its constructor already registers; a second call runs the step twice per contact.
+- **FluentCRM's import re-parents only one level of branch steps** (`FunnelController::createFunnelFromData`), so a condition inside a branch is silently dropped. Keep the onboarding automation a straight run of conditions.
+- **Publishing by saving `status` on the model does not start triggers.** Call `( new FunnelHandler() )->resetFunnelIndexes()`, and the triggers hook on the *next* request (they are read on `init`).
+- The existing 11 agencies joined the list before this existed, so the list trigger never fires for them. Enrolling them is a separate, deliberate step.
+
 ## Upgrade email wording
 
 - `{{ab_cart_edd_upgrade.new_plan_name}}` names the new plan mid-sentence. Another product: its name ("All Access Pass"). Same product: what the upgrade adds, worked out from Software Licensing's site limits (0 = unlimited) and lifetime flags: "a GravityImport plan with more sites", "a lifetime GravityImport plan", "a lifetime GravityImport plan with more sites", else "a different GravityImport plan". Never "the bigger {product} plan": it doesn't say what is bigger, and is wrong for a same-size lifetime upgrade.
