@@ -116,6 +116,9 @@ add_action(
 		( new \CustomCRM\AgencyProgressTracker() )->register();
 		new \CustomCRM\Actions\AgencyRewardCodeAction();
 
+		// Daily "Likely agency" tag and site count; no automation uses them.
+		( new \CustomCRM\AgencyFleetTagger() )->register();
+
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'gk-agency-crm', \CustomCRM\AgencyProgressCommand::class );
 		}

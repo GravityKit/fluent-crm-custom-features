@@ -15,6 +15,43 @@ class AgencyProgressCommand {
 	private const COLUMNS = [ 'agency', 'email', 'name', 'profile', 'clients', 'joined', 'assigned', 'paylinks', 'paid', 'result' ];
 
 	/**
+	 * Tag customers with many activated sites "Likely agency" and save each site count.
+	 *
+	 * Runs daily on its own. Creates no contacts and starts no automation.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--dry-run]
+	 * : Print what would change, and write nothing.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp gk-agency-crm fleet --dry-run
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Flags.
+	 */
+	public function fleet( $args, $assoc_args ): void {
+		$dry_run = ! empty( $assoc_args['dry-run'] );
+
+		if ( ! $dry_run ) {
+			AgencyFleetTagger::registerField();
+		}
+
+		$report = ( new AgencyFleetTagger() )->run( $dry_run );
+
+		foreach ( $report as $key => $value ) {
+			\WP_CLI::log( str_pad( $key, 24 ) . ( is_bool( $value ) ? ( $value ? 'yes' : 'no' ) : $value ) );
+		}
+
+		if ( ! empty( $report['error'] ) ) {
+			\WP_CLI::error( $report['error'] );
+		}
+
+		\WP_CLI::success( $dry_run ? 'Dry run: nothing written.' : 'Done.' );
+	}
+
+	/**
 	 * Recount every agency and write the owner's FluentCRM progress fields.
 	 *
 	 * Records no events and starts no automation by itself. Writing custom fields can start an

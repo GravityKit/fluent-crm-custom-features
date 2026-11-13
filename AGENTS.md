@@ -79,6 +79,7 @@ Records when an upgrade or manual renewal starts and completes, apart from the c
 - **Don't call `register()` on a FluentCRM `BaseAction`.** Its constructor already registers; a second call runs the step twice per contact.
 - **FluentCRM's import re-parents only one level of branch steps** (`FunnelController::createFunnelFromData`), so a condition inside a branch is silently dropped. Keep the onboarding automation a straight run of conditions.
 - **Publishing by saving `status` on the model does not start triggers.** Call `( new FunnelHandler() )->resetFunnelIndexes()`, and the triggers hook on the *next* request (they are read on `init`).
+- `AgencyFleetTagger` runs daily (09:30 UTC, `customcrm_agency_fleet_tag`): tags customers with 10+ activated non-local sites "Likely agency" (`likely-agency`) and writes `gk_sites_activated`. Run by hand with `wp gk-agency-crm fleet [--dry-run]`. No automation uses the tag. The count includes sites that went offline (activations never expire), so it reads about 3x telemetry's 30-day count. `edd_license_activations.last_request` is not a usable activity date: the Store API answers license checks without updating it. Refuses a run that would untag more than 30% of tagged contacts.
 - The existing 11 agencies joined the list before this existed, so the list trigger never fires for them. Enrolling them is a separate, deliberate step.
 
 ## Upgrade email wording
