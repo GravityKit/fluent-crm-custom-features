@@ -210,6 +210,12 @@ add_action(
 		if ( defined( 'FLUENTCRM' ) && apply_filters( 'customcrm/email_gate/enabled', true ) ) {
 			\CustomCRM\Email\CollisionGate::register();
 		}
+
+		// FluentCRM open and click tracking on EDD's customer emails. EDD can send a receipt before the
+		// priority-99 `init` callback runs, so this registers on `plugins_loaded`.
+		if ( defined( 'FLUENTCRM' ) && function_exists( 'EDD' ) && apply_filters( 'customcrm/edd_email_tracking/enabled', true ) ) {
+			\CustomCRM\Email\EddEmailTracking::register();
+		}
 	},
 	20
 );
