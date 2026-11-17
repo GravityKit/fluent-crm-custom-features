@@ -1085,6 +1085,11 @@ class EddCartTracking {
 		$hash   = sanitize_text_field( (string) Arr::get( $data, 'fc_ab_hash', '' ) );
 		$record = $hash ? AbandonCartModel::where( 'checkout_key', $hash )->where( 'provider', $this->driver->getProviderSlug() )->first() : null;
 
+		// Every visit counts, including ones to a cart that was bought or closed since the email.
+		if ( $record ) {
+			CartRecoveryClick::record( $record, (array) $data );
+		}
+
 		if ( ! $record || 'processing' !== $record->status ) {
 			do_action( 'fluent_crm/ab_cart_restore_failed', $record );
 			wp_safe_redirect( self::emailCheckoutUrl( $record, (array) $data ) );
@@ -1371,6 +1376,10 @@ class EddCartTracking {
 		if ( $record ) {
 			$args['utm_content'] = (string) $record->provider;
 			$args['fc_ab_cart']  = (int) $record->id;
+		}
+
+		if ( '' !== CartRecoveryClick::currentClickId() ) {
+			$args['fc_ab_click'] = CartRecoveryClick::currentClickId();
 		}
 
 		// FluentCRM's router may not pass unknown query vars through, so read the request too.

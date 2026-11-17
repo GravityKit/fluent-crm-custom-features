@@ -11,6 +11,8 @@ Team-facing overview (what the flows send, who is held back, how to change copy)
 - Bigger changes: a feature branch with a PR into `develop`, then an `Upcoming Release` PR from `develop` into `main`.
 - **For about a minute after a deploy, some live requests still run the old code.** Two checks on 2026-10-08 and 2026-10-09 returned the old redirect first and the new one on retry. Repeat a live check a few times with a fresh query string before calling a deploy broken.
 - **Recovery links keep the email's `utm_*`.** `EddCartTracking::emailCheckoutUrl()` copies them onto the checkout redirect, filling only missing tags with `fluentcrm` / `email` / `cart-recovery`, and adds `utm_content` (cart type) and `fc_ab_cart` (cart row ID). The link itself only redirects, so analytics first loads on checkout.
+- **Every visit to a recovery link is recorded by `CartRecoveryClick`** in `wp_customcrm_cart_clicks` (time UTC, cart, contact, campaign and email, cart type, `via` tracked/direct, `is_bot` + `bot_reason`), and as PostHog `cart_recovery_click` through the theme's `gk_posthog_send_started` sender; checkout gets `fc_ab_click` (the click ID) to join the visit. FluentCRM does wrap the link (`/?ns_url=`) and writes the `fc_campaign_url_metrics` row for tracked clicks, including scanners'; its redirect gets a signed `fc_ab_mid`. A person's visit without one gets that metrics row written here. Bot checks: HEAD, scanner user agents, no `Accept-Language`, under 15 s after the send.
+- Checks: `tests/gkclone/cart-recovery-click-checks.php` (needs the cart module and EDD providers on; no store data).
 
 ## Cart email automations
 
