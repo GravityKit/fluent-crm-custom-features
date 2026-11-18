@@ -14,6 +14,12 @@ use FluentCrm\App\Models\EventTracker;
 use FluentCrm\App\Models\Subscriber;
 use FluentCrm\App\Modules\AbandonCart\AbandonCartModel;
 
+$host     = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+$is_local = in_array( $host, [ 'localhost', '127.0.0.1' ], true ) || '.smint.orb.local' === substr( $host, -16 );
+if ( ! defined( 'WP_CLI' ) || ! WP_CLI || ! $is_local ) {
+	throw new RuntimeException( 'Cart journey checks require a disposable local WP-CLI site.' );
+}
+
 $run     = substr( md5( microtime() ), 0, 6 );
 $results = [];
 $started = [];

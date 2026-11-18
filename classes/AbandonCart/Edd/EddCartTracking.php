@@ -355,7 +355,7 @@ class EddCartTracking {
 		$last      = sanitize_text_field( self::postedText( 'last_name' ) );
 		$full_name = trim( $first . ' ' . $last );
 
-		$record = $this->syncCart( $email, $full_name );
+		$record = $this->syncCart( $email, $full_name, $first, $last );
 
 		wp_send_json_success( [ 'tracked' => (bool) $record ] );
 	}
@@ -406,7 +406,7 @@ class EddCartTracking {
 		$user = wp_get_current_user();
 
 		if ( $user && $user->ID && is_email( $user->user_email ) ) {
-			$this->syncCart( $user->user_email, trim( $user->first_name . ' ' . $user->last_name ) );
+			$this->syncCart( $user->user_email, trim( $user->first_name . ' ' . $user->last_name ), (string) $user->first_name, (string) $user->last_name );
 		}
 	}
 
@@ -415,7 +415,7 @@ class EddCartTracking {
 	 *
 	 * @return AbandonCartModel|null The stored cart, or null when nothing was stored.
 	 */
-	public function syncCart( string $email, string $full_name = '' ): ?AbandonCartModel {
+	public function syncCart( string $email, string $full_name = '', string $first_name = '', string $last_name = '' ): ?AbandonCartModel {
 		if ( ! AbCartHelper::willCartTrack() || self::isIgnoredEmail( $email ) ) {
 			return null;
 		}
@@ -461,12 +461,23 @@ class EddCartTracking {
 
 		$contact = FluentCrmApi( 'contacts' )->getContact( $email );
 
-		if ( ! $full_name && $contact ) {
-			$full_name = trim( $contact->first_name . ' ' . $contact->last_name );
+		$previous = $record ? ( $record->cart ?: [] ) : [];
+
+		// First and last name as the shopper typed them, so "Mary Ann" stays a first name. A save
+		// that only knows the full name keeps the parts saved before, or splits at the first space.
+		if ( '' !== $first_name || '' !== $last_name ) {
+			$name_parts = [ $first_name, $last_name ];
+		} elseif ( ! $full_name && $contact ) {
+			$name_parts = [ (string) $contact->first_name, (string) $contact->last_name ];
+		} else {
+			$saved      = (array) Arr::get( $previous, 'customer_data.billingAddress', [] );
+			$saved      = [ (string) Arr::get( $saved, 'first_name', '' ), (string) Arr::get( $saved, 'last_name', '' ) ];
+			$name_parts = $full_name && trim( implode( ' ', $saved ) ) === $full_name ? $saved : explode( ' ', $full_name, 2 );
 		}
 
-		$name_parts = explode( ' ', $full_name, 2 );
-		$previous   = $record ? ( $record->cart ?: [] ) : [];
+		if ( ! $full_name ) {
+			$full_name = trim( implode( ' ', $name_parts ) );
+		}
 
 		// A logged-out save from another of the shopper's browsers keeps the account a signed-in save
 		// tied to the cart, while the cart still uses that account's address (OneCartPerAddress reads it).
@@ -1111,9 +1122,50 @@ class EddCartTracking {
 
 		$this->setCookie( self::cookieValue( $record ) );
 		$this->setHandoffCookie( $record );
+		self::prefillCheckout( $record );
 
 		wp_safe_redirect( self::emailCheckoutUrl( $record, (array) $data ) );
 		exit;
+	}
+
+	/**
+	 * Opens checkout with the cart's email and name filled in, from EDD's checkout session. Only
+	 * empty fields are filled. A signed-in shopper gets their account details from EDD, and a
+	 * session that already has an email is left alone.
+	 */
+	private static function prefillCheckout( AbandonCartModel $record ): void {
+		if ( is_user_logged_in() || ! class_exists( '\EDD\Sessions\Customer' ) || ! is_email( (string) $record->email ) ) {
+			return;
+		}
+
+		$current = \EDD\Sessions\Customer::get();
+		if ( ! empty( $current['email'] ) ) {
+			return;
+		}
+
+		$full_name = trim( (string) $record->full_name );
+		$saved     = (array) Arr::get( (array) $record->cart, 'customer_data.billingAddress', [] );
+		$name      = ( '' !== (string) Arr::get( $saved, 'first_name', '' ) || '' !== (string) Arr::get( $saved, 'last_name', '' ) )
+			? [ (string) Arr::get( $saved, 'first_name', '' ), (string) Arr::get( $saved, 'last_name', '' ) ]
+			: explode( ' ', $full_name, 2 );
+
+		// EDD's set() starts from empty defaults, so pass the whole session back and fill only
+		// the blanks: a name or address the shopper already entered stays.
+		$fill = [
+			'email'      => (string) $record->email,
+			'first_name' => $name[0] ?? '',
+			'last_name'  => $name[1] ?? '',
+		];
+		foreach ( $fill as $key => $value ) {
+			if ( '' === trim( (string) ( $current[ $key ] ?? '' ) ) ) {
+				$current[ $key ] = $value;
+			}
+		}
+		if ( '' === trim( (string) ( $current['name'] ?? '' ) ) ) {
+			$current['name'] = trim( $current['first_name'] . ' ' . $current['last_name'] );
+		}
+
+		\EDD\Sessions\Customer::set( $current );
 	}
 
 	/** Rebuild from saved items; only recovery links may add a recovery offer. */
