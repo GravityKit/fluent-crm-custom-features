@@ -232,7 +232,7 @@ class CartEmailStop {
 	 *
 	 * @param AbandonCartModel $cart
 	 */
-	private static function contactId( AbandonCartModel $cart ): int {
+	public static function contactId( AbandonCartModel $cart ): int {
 		if ( $cart->contact_id ) {
 			return (int) $cart->contact_id;
 		}

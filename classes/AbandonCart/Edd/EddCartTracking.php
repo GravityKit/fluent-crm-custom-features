@@ -269,7 +269,7 @@ class EddCartTracking {
 	/**
 	 * @return EddCartDriver|EddRenewalCartDriver|EddUpgradeCartDriver
 	 */
-	private static function driverFor( string $provider ): EddCartDriver {
+	public static function driverFor( string $provider ): EddCartDriver {
 		if ( EddRenewalCartDriver::PROVIDER === $provider ) {
 			return new EddRenewalCartDriver();
 		}

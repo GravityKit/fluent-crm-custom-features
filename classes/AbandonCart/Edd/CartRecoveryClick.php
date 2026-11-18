@@ -4,8 +4,8 @@ namespace CustomCRM\AbandonCart\Edd;
 
 use FluentCrm\App\Models\CampaignEmail;
 use FluentCrm\App\Models\CampaignUrlMetric;
+use FluentCrm\App\Models\FunnelCampaign;
 use FluentCrm\App\Models\FunnelSubscriber;
-use FluentCrm\App\Models\Subscriber;
 use FluentCrm\App\Models\UrlStores;
 use FluentCrm\App\Modules\AbandonCart\AbandonCartModel;
 
@@ -200,11 +200,7 @@ class CartRecoveryClick {
 			return null;
 		}
 
-		global $wpdb;
-
-		$campaign_ids = $wpdb->get_col(
-			"SELECT id FROM {$wpdb->prefix}fc_campaigns WHERE type = 'funnel_email_campaign' AND parent_id IN (" . implode( ',', array_map( 'intval', $funnel_ids ) ) . ')' // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		);
+		$campaign_ids = FunnelCampaign::whereIn( 'parent_id', $funnel_ids )->pluck( 'id' )->all();
 
 		if ( ! $campaign_ids ) {
 			return null;
@@ -234,7 +230,7 @@ class CartRecoveryClick {
 				'campaign_id'   => (int) $email->campaign_id,
 				'subscriber_id' => (int) $email->subscriber_id,
 				'type'          => 'click',
-				'ip_address'    => function_exists( 'fluentCrmWillAnonymizeIp' ) ? FluentCrm( 'request' )->getIp( fluentCrmWillAnonymizeIp() ) : '',
+				'ip_address'    => function_exists( 'fluentCrmWillTrackIp' ) && fluentCrmWillTrackIp() && function_exists( 'fluentCrmWillAnonymizeIp' ) ? FluentCrm( 'request' )->getIp( fluentCrmWillAnonymizeIp() ) : '',
 			]
 		);
 
@@ -428,17 +424,11 @@ class CartRecoveryClick {
 	}
 
 	private static function signature( int $email_id, string $cart_key ): string {
-		return substr( wp_hash( 'customcrm-cart-click|' . $email_id . '|' . $cart_key ), 0, 16 );
+		return hash_hmac( 'sha256', 'customcrm-cart-click|' . $email_id . '|' . $cart_key, wp_salt( 'auth' ) );
 	}
 
 	private static function contactId( AbandonCartModel $cart ): int {
-		if ( ! empty( $cart->contact_id ) ) {
-			return (int) $cart->contact_id;
-		}
-
-		$contact = $cart->email ? Subscriber::where( 'email', $cart->email )->first() : null;
-
-		return $contact ? (int) $contact->id : 0;
+		return CartEmailStop::contactId( $cart );
 	}
 
 	/** `new`, `renewal` or `upgrade`. */
@@ -453,15 +443,7 @@ class CartRecoveryClick {
 	}
 
 	private static function driver( string $provider ): EddCartDriver {
-		if ( EddRenewalCartDriver::PROVIDER === $provider ) {
-			return new EddRenewalCartDriver();
-		}
-
-		if ( EddUpgradeCartDriver::PROVIDER === $provider ) {
-			return new EddUpgradeCartDriver();
-		}
-
-		return new EddCartDriver();
+		return EddCartTracking::driverFor( $provider );
 	}
 
 	private static function triggerName( string $provider ): string {
