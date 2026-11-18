@@ -1111,9 +1111,38 @@ class EddCartTracking {
 
 		$this->setCookie( self::cookieValue( $record ) );
 		$this->setHandoffCookie( $record );
+		self::prefillCheckout( $record );
 
 		wp_safe_redirect( self::emailCheckoutUrl( $record, (array) $data ) );
 		exit;
+	}
+
+	/**
+	 * Opens checkout with the cart's email and name filled in, from EDD's checkout session.
+	 * A signed-in shopper gets their account details from EDD, and a session that already has an
+	 * email keeps it.
+	 */
+	private static function prefillCheckout( AbandonCartModel $record ): void {
+		if ( is_user_logged_in() || ! class_exists( '\EDD\Sessions\Customer' ) || ! is_email( (string) $record->email ) ) {
+			return;
+		}
+
+		$current = \EDD\Sessions\Customer::get();
+		if ( ! empty( $current['email'] ) ) {
+			return;
+		}
+
+		$full_name = trim( (string) $record->full_name );
+		$name      = explode( ' ', $full_name, 2 );
+
+		\EDD\Sessions\Customer::set(
+			[
+				'email'      => (string) $record->email,
+				'name'       => $full_name,
+				'first_name' => $name[0] ?? '',
+				'last_name'  => $name[1] ?? '',
+			]
+		);
 	}
 
 	/** Rebuild from saved items; only recovery links may add a recovery offer. */
