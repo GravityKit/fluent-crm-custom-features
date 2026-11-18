@@ -1129,9 +1129,9 @@ class EddCartTracking {
 	}
 
 	/**
-	 * Opens checkout with the cart's email and name filled in, from EDD's checkout session.
-	 * A signed-in shopper gets their account details from EDD, and a session that already has an
-	 * email keeps it.
+	 * Opens checkout with the cart's email and name filled in, from EDD's checkout session. Only
+	 * empty fields are filled. A signed-in shopper gets their account details from EDD, and a
+	 * session that already has an email is left alone.
 	 */
 	private static function prefillCheckout( AbandonCartModel $record ): void {
 		if ( is_user_logged_in() || ! class_exists( '\EDD\Sessions\Customer' ) || ! is_email( (string) $record->email ) ) {
@@ -1149,14 +1149,23 @@ class EddCartTracking {
 			? [ (string) Arr::get( $saved, 'first_name', '' ), (string) Arr::get( $saved, 'last_name', '' ) ]
 			: explode( ' ', $full_name, 2 );
 
-		\EDD\Sessions\Customer::set(
-			[
-				'email'      => (string) $record->email,
-				'name'       => $full_name,
-				'first_name' => $name[0] ?? '',
-				'last_name'  => $name[1] ?? '',
-			]
-		);
+		// EDD's set() starts from empty defaults, so pass the whole session back and fill only
+		// the blanks: a name or address the shopper already entered stays.
+		$fill = [
+			'email'      => (string) $record->email,
+			'first_name' => $name[0] ?? '',
+			'last_name'  => $name[1] ?? '',
+		];
+		foreach ( $fill as $key => $value ) {
+			if ( '' === trim( (string) ( $current[ $key ] ?? '' ) ) ) {
+				$current[ $key ] = $value;
+			}
+		}
+		if ( '' === trim( (string) ( $current['name'] ?? '' ) ) ) {
+			$current['name'] = trim( $current['first_name'] . ' ' . $current['last_name'] );
+		}
+
+		\EDD\Sessions\Customer::set( $current );
 	}
 
 	/** Rebuild from saved items; only recovery links may add a recovery offer. */
