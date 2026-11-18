@@ -92,6 +92,14 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 	 */
 	public function getTargetUrl( $smart_link, $contact ) {
 		$ignored_params = [ 'fluentcrm', 'route', 'slug' ];
+
+		// Forwarding a tracked click's parameters makes FluentCRM's tracker rerun this link on the
+		// target page, in an endless loop (WEBSITE-567). Direct links keep them, e.g. their own `mid`.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading query params for smart link redirect, nonce not applicable.
+		if ( isset( $_GET['ns_url'] ) ) {
+			$ignored_params = array_merge( $ignored_params, [ 'ns_url', 'mid', 'fch', 'signed_hash', 'ano' ] );
+		}
+
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading query params for smart link redirect, nonce not applicable.
 		$query_params = array_diff_key( $_GET, array_flip( $ignored_params ) );
 
