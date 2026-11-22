@@ -54,7 +54,7 @@ Deleting the old `fc_funnel_subscribers` run is not enough. FluentCRM skips any 
 ## Smart Links (`SmartLinkHandler`, `SmartLinkConfirm`)
 
 - **A Smart Link that adds or removes a tag or list changes nothing when opened.** Mail scanners open every link in an email. The link redirects (303) to a page at `/wp-json/gk-smart-link/v1/confirm`, and the change happens when the reader presses its button. Links with no tag or list actions redirect to their target as before.
-- **The button counts only with the page's own signed fields, and only after the page has been open 2 seconds** (`SmartLinkConfirm::MIN_SECONDS`) and within a day. Anything else shows the page again. This stops a bare POST, a form on another site, and a script that submits the form as soon as the page loads. It does not stop a scanner that drives a real browser and waits.
+- **The button counts only with the page's own signed fields, made within a day.** Anything else shows the page again. This stops a bare POST and a form on another site. There is no minimum wait: scanners open links but don't submit forms, and a 2-second wait sent people who clicked fast back to the same page with no explanation.
 - **A tracked email click puts the contact in the page address, signed. A direct link (`/?fluentcrm=1&route=smart_url&slug=…`) does not**: its address is the same for every visitor, so the redirect from it must be too, and the page reads the contact from FluentCRM's cookie or the login. A visitor it cannot name gets a page with no button.
 - `contact_clicks` and `fluent_crm/smart_link_clicked_by_contact` now mean the button was pressed. `all_clicks` still counts every open, scanners included.
 - Auto-login is not run for a link that also changes tags or lists. No live link uses it.

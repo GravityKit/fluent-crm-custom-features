@@ -28,12 +28,6 @@ class SmartLinkConfirm {
 	public const REST_ROUTE = '/confirm';
 
 	/**
-	 * Seconds the page must have been open before its button counts. A script that submits the
-	 * form as soon as the page loads gets the page again.
-	 */
-	public const MIN_SECONDS = 2;
-
-	/**
 	 * Hooks the page.
 	 */
 	public static function register(): void {
@@ -161,8 +155,8 @@ class SmartLinkConfirm {
 	}
 
 	/**
-	 * Whether this POST came from the page's own form, after the page had been open long enough
-	 * for a person to read it and within a day.
+	 * Whether this POST came from the page's own form, made within the last day. No minimum wait:
+	 * scanners open links but don't submit forms, and a wait would bounce people who click fast.
 	 *
 	 * @param string $slug       Smart Link slug.
 	 * @param int    $contact_id FluentCRM contact ID.
@@ -176,7 +170,7 @@ class SmartLinkConfirm {
 		$is_ours = hash_equals( self::formFields( $slug, $contact_id, $time )['s'], $signature );
 		$age     = time() - $time;
 
-		return $is_ours && $age >= self::MIN_SECONDS && $age <= DAY_IN_SECONDS;
+		return $is_ours && $age >= 0 && $age <= DAY_IN_SECONDS;
 	}
 
 	/**
