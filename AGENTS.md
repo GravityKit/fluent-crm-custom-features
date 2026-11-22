@@ -51,6 +51,17 @@ Deleting the old `fc_funnel_subscribers` run is not enough. FluentCRM skips any 
 - **Upgrade emails don't check license ownership.** Software Licensing lets any email check out an upgrade for any license key, and the upgrade driver doesn't check the cart email owns the license. An email can tell someone about "your current license" when it isn't theirs.
 - On live cart 32 (2026-09-30) the 60-minute wait before upgrade email 1 took 29 seconds. It was probably forced by a test; confirm before relying on the timing.
 
+## Smart Links (`SmartLinkHandler`, `SmartLinkConfirm`)
+
+- **A Smart Link that adds or removes a tag or list changes nothing when opened.** Mail scanners open every link in an email. The link redirects (303) to a page at `/email/confirm/` (a rewrite rule onto the REST route `/wp-json/gk-smart-link/v1/confirm`, which also still works; the page sends `no-store`, which the host respects), and the change happens when the reader presses its button. Links with no tag or list actions redirect to their target as before.
+- **The button counts only with the page's own signed fields, made within a day.** Anything else shows the page again. This stops a bare POST and a form on another site. There is no minimum wait: scanners open links but don't submit forms, and a 2-second wait sent people who clicked fast back to the same page with no explanation.
+- **A tracked email click puts the contact in the page address, signed. A direct link (`/?fluentcrm=1&route=smart_url&slug=…`) does not**: its address is the same for every visitor, so the redirect from it must be too, and the page reads the contact from FluentCRM's cookie or the login. A visitor it cannot name gets a page with no button.
+- **Analytics:** the button press fires `gk/email_link/confirmed` (Block-Theme mu-plugin `inc/plugins/conversion-bridge.php`), which queues `email_link_confirmed` in Conversion Bridge for the target page, sent to GA4 and PostHog only. The confirmation page itself is not tracked: scanners open it.
+- `contact_clicks` and `fluent_crm/smart_link_clicked_by_contact` now mean the button was pressed. `all_clicks` still counts every open, scanners included.
+- Auto-login is not run for a link that also changes tags or lists. No live link uses it.
+- Add the page wording for each new link in `SmartLinkConfirm::copy()`, by slug; others get "Please confirm".
+- Checks: `tests/gkclone/smart-link-confirm-checks.php`.
+
 ## Upgrade and renewal tracking (`CartJourney`)
 
 Records when an upgrade or manual renewal starts and completes, apart from the cart emails. Automatic renewals have no cart, so they get none of this.
