@@ -136,6 +136,7 @@ class SmartLinkConfirm {
 		if ( $is_pressed ) {
 			$handler = new SmartLinkHandler();
 			$handler->applyConfirmed( $smart_link, $contact );
+			self::track( $smart_link );
 
 			nocache_headers();
 			wp_safe_redirect( $handler->getTargetUrl( $smart_link, $contact, $forward ), 303 );
@@ -149,6 +150,26 @@ class SmartLinkConfirm {
 		);
 
 		self::render( $copy['title'], $message, $copy['button'], esc_url( self::url( $smart_link, $contact_id, $forward ) ), 200, self::formFields( $slug, (int) $contact->id ) );
+	}
+
+	/**
+	 * Records the button press in analytics through the site's Conversion Bridge wrapper (Block-Theme
+	 * mu-plugin `inc/plugins/conversion-bridge.php`). The event is queued for the target page the
+	 * press redirects to, which sends it to GA4, PostHog and Google Ads. Page views are not tracked:
+	 * scanners open this page. Nothing happens where the wrapper is not loaded.
+	 *
+	 * @param SmartLink $smart_link The Smart Link.
+	 */
+	private static function track( SmartLink $smart_link ): void {
+		do_action(
+			'gk/email_link/confirmed',
+			[
+				'link_type'  => 'smart_link',
+				'link'       => (string) $smart_link->short,
+				'link_title' => (string) $smart_link->title,
+			],
+			true
+		);
 	}
 
 	/**
