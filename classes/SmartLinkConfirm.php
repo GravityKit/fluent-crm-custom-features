@@ -28,9 +28,26 @@ class SmartLinkConfirm {
 	public const REST_ROUTE = '/confirm';
 
 	/**
+	 * The address in emails. It loads the REST route through a rewrite rule; the `/wp-json/` address
+	 * keeps working for links already sent.
+	 */
+	public const PRETTY_PATH = 'email/confirm';
+
+	/**
 	 * Hooks the page.
 	 */
 	public static function register(): void {
+		// Called on `init`, so the rule is added now. A missing rule means the site's saved rules
+		// predate it: flush once so the address works without a visit to Settings > Permalinks.
+		$rule = '^' . self::PRETTY_PATH . '/?$';
+		add_rewrite_rule( $rule, 'index.php?rest_route=/' . self::REST_NAMESPACE . self::REST_ROUTE, 'top' );
+
+		$saved_rules = (array) get_option( 'rewrite_rules', [] );
+		if ( ! isset( $saved_rules[ $rule ] ) && ! get_transient( 'customcrm_smart_link_rewrite_flushed' ) ) {
+			set_transient( 'customcrm_smart_link_rewrite_flushed', 1, HOUR_IN_SECONDS );
+			flush_rewrite_rules( false );
+		}
+
 		add_action(
 			'rest_api_init',
 			function () {
@@ -66,7 +83,7 @@ class SmartLinkConfirm {
 			$args['fw'] = rawurlencode( http_build_query( $forward ) );
 		}
 
-		return add_query_arg( $args, rest_url( self::REST_NAMESPACE . self::REST_ROUTE ) );
+		return add_query_arg( $args, home_url( '/' . self::PRETTY_PATH . '/' ) );
 	}
 
 	/**
