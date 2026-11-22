@@ -51,6 +51,16 @@ Deleting the old `fc_funnel_subscribers` run is not enough. FluentCRM skips any 
 - **Upgrade emails don't check license ownership.** Software Licensing lets any email check out an upgrade for any license key, and the upgrade driver doesn't check the cart email owns the license. An email can tell someone about "your current license" when it isn't theirs.
 - On live cart 32 (2026-09-30) the 60-minute wait before upgrade email 1 took 29 seconds. It was probably forced by a test; confirm before relying on the timing.
 
+## Smart Links (`SmartLinkHandler`, `SmartLinkConfirm`)
+
+- **A Smart Link that adds or removes a tag or list changes nothing when opened.** Mail scanners open every link in an email. The link redirects (303) to a page at `/wp-json/gk-smart-link/v1/confirm`, and the change happens when the reader presses its button. Links with no tag or list actions redirect to their target as before.
+- **The button counts only with the page's own signed fields, and only after the page has been open 2 seconds** (`SmartLinkConfirm::MIN_SECONDS`) and within a day. Anything else shows the page again. This stops a bare POST, a form on another site, and a script that submits the form as soon as the page loads. It does not stop a scanner that drives a real browser and waits.
+- **A tracked email click puts the contact in the page address, signed. A direct link (`/?fluentcrm=1&route=smart_url&slug=…`) does not**: its address is the same for every visitor, so the redirect from it must be too, and the page reads the contact from FluentCRM's cookie or the login. A visitor it cannot name gets a page with no button.
+- `contact_clicks` and `fluent_crm/smart_link_clicked_by_contact` now mean the button was pressed. `all_clicks` still counts every open, scanners included.
+- Auto-login is not run for a link that also changes tags or lists. No live link uses it.
+- Add the page wording for each new link in `SmartLinkConfirm::copy()`, by slug; others get "Please confirm".
+- Checks: `tests/gkclone/smart-link-confirm-checks.php`.
+
 ## Upgrade and renewal tracking (`CartJourney`)
 
 Records when an upgrade or manual renewal starts and completes, apart from the cart emails. Automatic renewals have no cart, so they get none of this.
