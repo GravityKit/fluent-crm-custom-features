@@ -22,6 +22,10 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 	/**
 	 * Handle the smart link click.
 	 *
+	 * A link that changes the contact (tags or lists) never acts here: this runs on a GET, which
+	 * mail scanners send for every link in a message. It sends the reader to SmartLinkConfirm,
+	 * whose button post calls applyConfirmed().
+	 *
 	 * @param string $slug The smart link slug.
 	 * @param null   $contact The contact object.
 	 *
@@ -38,36 +42,20 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 			$contact = fluentcrm_get_current_contact();
 		}
 
-		// Increment click count.
-		if ( $contact ) {
-			// Here to preserve original order. If this $smart_link->save();
-			// doesn't need to be done before tags/lists, then this can be merged,
-			// and the save() can be done at the end.
-			++$smart_link->contact_clicks;
-		}
-
 		++$smart_link->all_clicks;
 		$smart_link->save();
 
-		if ( $contact ) {
-			$tags         = Arr::get( $smart_link->actions, 'tags' );
-			$lists        = Arr::get( $smart_link->actions, 'lists' );
-			$remove_tags  = Arr::get( $smart_link->actions, 'remove_tags' );
-			$remove_lists = Arr::get( $smart_link->actions, 'remove_lists' );
+		if ( self::changesContact( $smart_link ) ) {
+			$confirm_url = SmartLinkConfirm::url( $smart_link, $contact ? (int) $contact->id : 0, $this->forwardedParams() );
 
-			// Perform actions based on smart link settings.
-			if ( $tags ) {
-				$contact->attachTags( $tags );
-			}
-			if ( $lists ) {
-				$contact->attachLists( $lists );
-			}
-			if ( $remove_tags ) {
-				$contact->detachTags( $remove_tags );
-			}
-			if ( $remove_lists ) {
-				$contact->detachLists( $remove_lists );
-			}
+			nocache_headers();
+			wp_safe_redirect( $confirm_url, 303 );
+			exit();
+		}
+
+		if ( $contact ) {
+			++$smart_link->contact_clicks;
+			$smart_link->save();
 
 			if ( 'yes' === Arr::get( $smart_link->actions, 'auto_login' ) ) {
 				$this->makeAutoLogin( $contact );
@@ -83,14 +71,58 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 	}
 
 	/**
-	 * Get the target URL for the smart link with query parameters preserved.
+	 * Whether the link adds or removes a tag or list.
 	 *
-	 * @param SmartLink                     $smart_link The smart link object.
-	 * @param \FluentCrm\App\Models\Contact $contact The contact object.
-	 *
-	 * @return string The target URL with query parameters preserved.
+	 * @param SmartLink $smart_link The smart link object.
 	 */
-	public function getTargetUrl( $smart_link, $contact ) {
+	public static function changesContact( $smart_link ): bool {
+		foreach ( [ 'tags', 'lists', 'remove_tags', 'remove_lists' ] as $action ) {
+			if ( Arr::get( $smart_link->actions, $action ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Applies the link's tag and list changes after the reader pressed the confirmation button.
+	 * Auto-login is not run here; it needs the verified email click, which is a separate request.
+	 *
+	 * @param SmartLink                         $smart_link The smart link object.
+	 * @param \FluentCrm\App\Models\Subscriber $contact    The contact.
+	 */
+	public function applyConfirmed( $smart_link, $contact ): void {
+		$tags         = Arr::get( $smart_link->actions, 'tags' );
+		$lists        = Arr::get( $smart_link->actions, 'lists' );
+		$remove_tags  = Arr::get( $smart_link->actions, 'remove_tags' );
+		$remove_lists = Arr::get( $smart_link->actions, 'remove_lists' );
+
+		if ( $tags ) {
+			$contact->attachTags( $tags );
+		}
+		if ( $lists ) {
+			$contact->attachLists( $lists );
+		}
+		if ( $remove_tags ) {
+			$contact->detachTags( $remove_tags );
+		}
+		if ( $remove_lists ) {
+			$contact->detachLists( $remove_lists );
+		}
+
+		++$smart_link->contact_clicks;
+		$smart_link->save();
+
+		do_action( 'fluent_crm/smart_link_clicked_by_contact', $smart_link, $contact );
+	}
+
+	/**
+	 * Query parameters of this request that go on to the target page.
+	 *
+	 * @return array
+	 */
+	private function forwardedParams(): array {
 		$ignored_params = [ 'fluentcrm', 'route', 'slug' ];
 
 		// Forwarding a tracked click's parameters makes FluentCRM's tracker rerun this link on the
@@ -101,10 +133,23 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading query params for smart link redirect, nonce not applicable.
-		$query_params = array_diff_key( $_GET, array_flip( $ignored_params ) );
+		return map_deep( array_diff_key( wp_unslash( $_GET ), array_flip( $ignored_params ) ), 'sanitize_text_field' );
+	}
 
-		// Sanitize all forwarded query parameters (handles nested arrays).
-		$query_params = map_deep( $query_params, 'sanitize_text_field' );
+	/**
+	 * Get the target URL for the smart link with query parameters preserved.
+	 *
+	 * @param SmartLink                     $smart_link   The smart link object.
+	 * @param \FluentCrm\App\Models\Contact $contact      The contact object.
+	 * @param array|null                    $query_params Parameters to forward; null reads this request.
+	 *
+	 * @return string The target URL with query parameters preserved.
+	 */
+	public function getTargetUrl( $smart_link, $contact, $query_params = null ) {
+		if ( null === $query_params ) {
+			$query_params = $this->forwardedParams();
+		}
+
 		$query_string = http_build_query( $query_params );
 
 		$target_url = $smart_link->target_url;
