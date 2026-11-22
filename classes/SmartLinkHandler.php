@@ -38,6 +38,10 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 			return;
 		}
 
+		// Only a tracked email click names its contact in the page's address. A direct link is the
+		// same address for everyone, so its redirect must be too: the page reads the cookie itself.
+		$email_contact_id = $contact ? (int) $contact->id : 0;
+
 		if ( ! $contact ) {
 			$contact = fluentcrm_get_current_contact();
 		}
@@ -46,7 +50,7 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 		$smart_link->save();
 
 		if ( self::changesContact( $smart_link ) ) {
-			$confirm_url = SmartLinkConfirm::url( $smart_link, $contact ? (int) $contact->id : 0, $this->forwardedParams() );
+			$confirm_url = SmartLinkConfirm::url( $smart_link, $email_contact_id, $this->forwardedParams() );
 
 			nocache_headers();
 			wp_safe_redirect( $confirm_url, 303 );
@@ -89,7 +93,7 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 	 * Applies the link's tag and list changes after the reader pressed the confirmation button.
 	 * Auto-login is not run here; it needs the verified email click, which is a separate request.
 	 *
-	 * @param SmartLink                         $smart_link The smart link object.
+	 * @param SmartLink                        $smart_link The smart link object.
 	 * @param \FluentCrm\App\Models\Subscriber $contact    The contact.
 	 */
 	public function applyConfirmed( $smart_link, $contact ): void {
@@ -123,17 +127,27 @@ class SmartLinkHandler extends \FluentCampaign\App\Hooks\Handlers\SmartLinkHandl
 	 * @return array
 	 */
 	private function forwardedParams(): array {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading query params for smart link redirect, nonce not applicable.
+		return self::forwardable( wp_unslash( $_GET ) );
+	}
+
+	/**
+	 * The parameters that may go on to the target page, sanitized.
+	 *
+	 * @param array $params Unslashed query parameters.
+	 *
+	 * @return array
+	 */
+	public static function forwardable( array $params ): array {
 		$ignored_params = [ 'fluentcrm', 'route', 'slug' ];
 
 		// Forwarding a tracked click's parameters makes FluentCRM's tracker rerun this link on the
 		// target page, in an endless loop (WEBSITE-567). Direct links keep them, e.g. their own `mid`.
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading query params for smart link redirect, nonce not applicable.
-		if ( isset( $_GET['ns_url'] ) ) {
+		if ( isset( $params['ns_url'] ) ) {
 			$ignored_params = array_merge( $ignored_params, [ 'ns_url', 'mid', 'fch', 'signed_hash', 'ano' ] );
 		}
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading query params for smart link redirect, nonce not applicable.
-		return map_deep( array_diff_key( wp_unslash( $_GET ), array_flip( $ignored_params ) ), 'sanitize_text_field' );
+		return map_deep( array_diff_key( $params, array_flip( $ignored_params ) ), 'sanitize_text_field' );
 	}
 
 	/**

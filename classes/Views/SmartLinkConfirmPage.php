@@ -2,10 +2,13 @@
 /**
  * Confirmation page for Smart Links that change a contact (SmartLinkConfirm).
  *
+ * @package CustomCRM
+ *
  * @var string $title
  * @var string $message
  * @var string $button      Button label; empty for no button.
  * @var string $form_action Escaped URL the button posts to.
+ * @var array  $fields      Hidden form fields, name => value.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -41,6 +44,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<p><?php echo esc_html( $message ); ?></p>
 		<?php if ( $button && $form_action ) : ?>
 			<form method="post" action="<?php echo $form_action; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped by the caller ?>">
+				<?php foreach ( $fields as $name => $value ) : ?>
+					<input type="hidden" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( $value ); ?>">
+				<?php endforeach; ?>
 				<button type="submit"><?php echo esc_html( $button ); ?></button>
 			</form>
 		<?php else : ?>
