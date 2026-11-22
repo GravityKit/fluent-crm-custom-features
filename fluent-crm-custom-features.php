@@ -123,6 +123,9 @@ add_action(
 
 			add_action( 'fluentcrm_smartlink_clicked', [ $fix_smart_link_redirects, 'handleClick' ], 9, 1 );
 			add_action( 'fluentcrm_smartlink_clicked_direct', [ $fix_smart_link_redirects, 'handleClick' ], 9, 2 );
+
+			// Links that change a contact act only on this page's button post, never on a click.
+			\CustomCRM\SmartLinkConfirm::register();
 		}
 
 		// Custom CSS editor for FluentCRM email templates.

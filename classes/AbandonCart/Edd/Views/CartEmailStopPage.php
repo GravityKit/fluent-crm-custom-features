@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 </head>
 <body>
 	<div class="band">
-		<a href="<?php echo esc_url( home_url( '/' ) ); ?>"><img src="https://www.gravitykit.com/wp-content/uploads/2026/02/logo-5.png" alt="GravityKit"></a>
+		<a href="<?php echo esc_url( home_url( '/' ) ); ?>"><img src="https://www.gravitykit.com/wp-content/uploads/2026/02/logo-5.png" alt="GravityKit" width="200" height="78"></a>
 	</div>
 	<main class="card">
 		<h1><?php echo esc_html( $title ); ?></h1>
