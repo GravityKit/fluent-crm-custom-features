@@ -82,6 +82,19 @@ Records when an upgrade or manual renewal starts and completes, apart from the c
 - `{{ab_cart_edd_upgrade.new_plan_name}}` names the new plan mid-sentence. Another product: its name ("All Access Pass"). Same product: what the upgrade adds, worked out from Software Licensing's site limits (0 = unlimited) and lifetime flags: "a GravityImport plan with more sites", "a lifetime GravityImport plan", "a lifetime GravityImport plan with more sites", else "a different GravityImport plan". Never "the bigger {product} plan": it doesn't say what is bigger, and is wrong for a same-size lifetime upgrade.
 - Upgrade prices are computed when each email sends; with time-based proration they drop a little every day.
 
+## EDD email tracking (`classes/Email/EddEmailTracking.php`)
+
+Opens and clicks of EDD's customer emails (purchase receipts, renewal reminders, renewal receipts, license notices) record in FluentCRM, with FluentCRM's own pixel and click links.
+
+- **Scope:** only a wp_mail() call between `edd_email_send_before` and `edd_email_send_after`, for EDD email types whose recipient is `customer` and whose context is not `user`. Admin emails, account emails (login details, verification, sign-in links) and test sends are left alone. An email that already has FluentCRM tracking is left alone, so there is never a second pixel.
+- **Records:** each tracked send is a `sent` row in `fc_campaign_emails` (`email_type` `custom_email_campaign`) on one campaign per EDD email, titled "EDD: <name> (<when>) [<EDD email ID>]". Option `customcrm_edd_email_campaigns` maps the EDD email ID to the campaign. The campaigns are `custom_email_campaign` with status `published`, which FluentCRM's sender never picks up.
+- **No contact, no tracking.** No contact is created, because that can start automations. Skips are counted by reason in option `customcrm_edd_email_tracking_stats` (`no_contact`, `not_customer`, `account_email`, `error`, …; `tracked` counts the rest).
+- FluentCRM's global open and click settings apply, including "anonymous". Download links (`eddfile=`) keep their URL. Any error sends the email as EDD built it.
+- Gravity SMTP runs the `wp_mail` filter more than once per email; the second pass gets the same tracked copy, with no new row.
+- Opens and clicks count as contact activity, so they move FluentCRM's "Last Email Open" and "Last Email Clicked" conditions and segments.
+- Switch off with the filter `customcrm/edd_email_tracking/enabled`; leave out one email with `customcrm/edd_email_tracking/track_email`.
+- Checks: `tests/gkclone/edd-email-tracking-checks.php` (modes `on`, `off`, `anonymous`, each in its own process).
+
 ## Local-time sending (`classes/LocalTime/`)
 
 Delivers a campaign on its picked date, inside a window (8:00-11:00 by default) in each recipient's own zone. It is local-time delivery. It does not send "when each person normally opens"; our data cannot show that.
